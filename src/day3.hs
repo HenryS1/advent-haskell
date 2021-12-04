@@ -1,48 +1,62 @@
 module Day3 where
 
-import Debug.Trace
 import Data.Foldable
 import Text.Parsec.Char
 import Text.ParserCombinators.Parsec 
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import qualified Data.List as L
 import Data.Bits
+import qualified Data.Char as C
 
 positiveInt :: GenParser Char st Int
 positiveInt = read <$> many1 digit
 
-data Binary = Binary { digits :: [Int] } deriving Show
+data Binary = Binary { len :: Int, n :: Int } deriving Show
+
+bitsToInt :: [Int] -> Int
+bitsToInt bs = toInt' 0 bs
+  where toInt' i [] = i
+        toInt' i (b : rest) = toInt' (2 * i + b) rest
 
 binary :: GenParser Char st Binary
-binary = Binary <$> many1 (read <$> (:[]) <$> digit)
+binary = do 
+  s <- many1 digit
+  return (Binary (length s) (bitsToInt (map C.digitToInt s)))
 
 numbers :: GenParser Char st [Binary]
 numbers = many1 (binary <* endOfLine)
 
-toInt :: Binary -> Int
-toInt (Binary bs) = toInt' 0 bs
-  where toInt' acc [] = acc
-        toInt' acc (b : rest) = toInt' (acc * 2 + b) rest
+type BitSelector = [Binary] -> Int -> Int
 
-bitCounts :: [Int] -> (Int, Int)
-bitCounts = foldl' (\(one, zero) i -> if i .&. 1 == 0 then (one, zero + 1) else (one + 1, zero)) (0, 0)
+type Predicate = Int -> Int -> Bool
 
-mostCommonBit :: [Int] -> Int
-mostCommonBit is = let (one, zero) = bitCounts is 
-                   in if zero > one then 0 else 1
+bitCountSelector :: Predicate -> BitSelector
+bitCountSelector p bs index = 
+  let (ones, zeros) = foldl' (\(one, zero) (Binary _ v) -> 
+                                if v .&. (shiftL 1 index) == 0 
+                                then (one, zero + 1) else (one + 1, zero)) (0, 0) bs
+  in if p ones zeros then 1 else 0
 
-mostCommonBits :: [[Int]] -> [Int]
-mostCommonBits bs = (map mostCommonBit) $ L.transpose bs
+oneBiasedMostCommonBit :: BitSelector
+oneBiasedMostCommonBit = bitCountSelector (>=)
+
+zeroBiasedLeastCommonBit :: BitSelector
+zeroBiasedLeastCommonBit = bitCountSelector (<)
+
+oneBiasedMostCommonBits :: [Binary] -> [Int]
+oneBiasedMostCommonBits [] = []
+oneBiasedMostCommonBits bs@((Binary ln _) : _) = 
+  map (oneBiasedMostCommonBit bs) [ln - 1, ln - 2 .. 0]
 
 invert :: Binary -> Binary
-invert (Binary bs) = Binary $ map (xor 1) bs
+invert (Binary ln bs) = Binary ln (bs `xor` (shiftL 1 ln - 1))
 
 powerConsumption :: [Binary] -> Int
-powerConsumption bs = let is = map digits bs
-                          epsilon = Binary $ mostCommonBits is
-                          gamma = invert epsilon
-                      in toInt epsilon * toInt gamma
+powerConsumption [] = 0
+powerConsumption bs@(Binary ln _ : _) = 
+  let epsilon = Binary ln (bitsToInt $ oneBiasedMostCommonBits bs)
+      gamma = invert epsilon
+  in (n epsilon) * (n gamma)
 
 input :: IO (Either ParseError [Binary])
 input = do
@@ -51,51 +65,34 @@ input = do
 
 part1 :: IO (Either ParseError Int)
 part1 = (fmap powerConsumption) <$> input
-  
-data Zipper = Zipper { left :: [Int], right :: [Int]} deriving Show
 
-zipRight :: Zipper -> Zipper
-zipRight z@(Zipper _ []) = z
-zipRight (Zipper l (r : rs)) = Zipper (r : l) rs
+filterByPredicate :: BitSelector -> [Binary] -> Int -> [Binary]
+filterByPredicate _ [] _ = []
+filterByPredicate bi bs i = 
+  let bitChoice = bi bs i
+  in filter (\(Binary _ v) -> v .&. (shiftL 1 i) == (shiftL bitChoice i)) bs 
 
-type BitIndicator = [Int] -> Int
+filterRepeatedly :: BitSelector -> [Binary] -> Int -> Maybe Binary
+filterRepeatedly _ [] _ = Nothing
+filterRepeatedly _ [b] _ = Just b
+filterRepeatedly bi bs@(Binary _ _ : _) i = 
+  if i < 0 
+  then Nothing
+  else filterRepeatedly bi (filterByPredicate bi bs i) (i - 1)
 
-filterByPredicate :: BitIndicator -> [Zipper] -> [Zipper]
-filterByPredicate _ [] = []
-filterByPredicate _ [z] = [z]
-filterByPredicate bi zs@(z : _) = if null $ right z then zs 
-  else let mcb = bi $ map (head . right) zs
-       in filter (\zp -> case zp of
-                     Zipper _ [] -> True
-                     Zipper _ (b : _) -> b == mcb) zs
+filterByOxygen :: [Binary] -> Maybe Binary
+filterByOxygen [] = Nothing
+filterByOxygen bs@(Binary l _ : _) = filterRepeatedly oneBiasedMostCommonBit bs (l - 1)
 
-filterRepeatedly :: BitIndicator -> [Zipper] -> Maybe Zipper
-filterRepeatedly _ [] = Nothing
-filterRepeatedly _ [z] = Just z
-filterRepeatedly bi zs = filterRepeatedly bi $ map zipRight $ filterByPredicate bi zs
-
-filterByOxygen :: [Zipper] -> Maybe Zipper
-filterByOxygen = filterRepeatedly mostCommonBit
-
-filterByCO2 :: [Zipper] -> Maybe Zipper
-filterByCO2 = filterRepeatedly (\is -> let (one, zero) = bitCounts is
-                                       in if one < zero then 1 else 0)
-
-binaryToZipper :: Binary -> Zipper
-binaryToZipper (Binary bs) = Zipper [] bs
-
-zipperToBinary :: Zipper -> Binary
-zipperToBinary (Zipper ls rs) = Binary ((reverse ls) ++ rs)
+filterByCO2 :: [Binary] -> Maybe Binary
+filterByCO2 [] = Nothing
+filterByCO2 bs@(Binary l _ : _) = filterRepeatedly zeroBiasedLeastCommonBit bs (l - 1)
 
 findOxygenRating :: [Binary] -> Maybe Int
-findOxygenRating bs = let zs = map binaryToZipper bs
-                          oxygenZip = filterByOxygen zs
-                      in toInt <$> zipperToBinary <$> oxygenZip
+findOxygenRating bs = n <$> filterByOxygen bs
 
 findCO2Rating :: [Binary] -> Maybe Int
-findCO2Rating bs = let zs = map binaryToZipper bs
-                       co2Zip = filterByCO2 zs
-                   in toInt <$> zipperToBinary <$> co2Zip
+findCO2Rating bs = n <$> filterByCO2 bs
 
 lifeSupportRating :: [Binary] -> Maybe Int
 lifeSupportRating bs = do
@@ -105,5 +102,3 @@ lifeSupportRating bs = do
 
 part2 :: IO (Either ParseError (Maybe Int))
 part2 = (fmap lifeSupportRating) <$> input
-
-  
