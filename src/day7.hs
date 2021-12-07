@@ -42,19 +42,14 @@ totalDistances is = let pCounts = positionCounts is
 part1 :: IO (Either ParseError Int)
 part1 = (fmap (minimum . totalDistances)) <$> input
 
-accumulatingSum :: Int -> [Int] -> [Int]
-accumulatingSum _ [] = []
-accumulatingSum runningTotal (i : is) = let newTotal = i + runningTotal 
-                                        in newTotal : accumulatingSum newTotal is
-
 totalAccumulatingDistances :: [Int] -> Int
 totalAccumulatingDistances is = let pCounts = positionCounts is
                                     mn = minimum is
                                     mx = maximum is
                                     ld = cumulativeDistances 0 0 pCounts [mn..mx]
                                     rd = cumulativeDistances 0 0 pCounts [mx, mx-1..mn]
-                                    leftDistances = accumulatingSum 0 ld
-                                    rightDistances = reverse $ accumulatingSum 0 rd
+                                    leftDistances = scanl1 (+) ld
+                                    rightDistances = reverse $ scanl1 (+) rd
                                 in minimum $ map (uncurry (+)) $ zip leftDistances rightDistances
 
 part2 :: IO (Either ParseError Int)
