@@ -39,11 +39,11 @@ input = do
   fileContent <- TIO.readFile "/Users/henrysteere/wip/haskell/advent2021/src/day12.input"
   return $ parse parseGraph "day12.input" (T.unpack fileContent)
 
-data SearchState = SearchState { current :: Cave, seen :: S.Set Cave, path :: [Cave], pathCount :: Int, seenPaths :: S.Set [Cave], singleSeen :: Maybe Cave }
+data SearchState = SearchState { current :: Cave, seen :: S.Set Cave, path :: [Cave], pathCount :: Int, singleSeen :: Maybe Cave }
 
 countPaths :: Graph -> Cave -> ST.State SearchState ()
 countPaths gr end = do
-  s@(SearchState curr sn _ cnt _ _) <- ST.get
+  s@(SearchState curr sn _ cnt _ ) <- ST.get
   if curr == end
     then ST.put (s { pathCount = cnt + 1})
     else case M.lookup curr gr of
@@ -66,19 +66,34 @@ countPaths gr end = do
 
 answer :: Graph -> Int
 answer gr = pathCount 
-  $ ST.execState (countPaths gr (Small "end")) (SearchState (Small "start") (S.singleton (Small "start")) [] 0 S.empty Nothing)
+  $ ST.execState (countPaths gr (Small "end")) (SearchState (Small "start") (S.singleton (Small "start")) [] 0 Nothing)
+
+start :: Cave 
+start = Small "start"
 
 countPathsSingleRepeat :: Graph -> Cave -> ST.State SearchState ()
 countPathsSingleRepeat gr end = do
-  s@(SearchState curr sn pth cnt snPaths singleS) <- ST.get
+  s@(SearchState curr sn _ cnt singleS) <- ST.get
   if curr == end
-    then if S.member pth snPaths
-         then return ()
-         else ST.put (s { pathCount = cnt + 1, seenPaths = S.insert pth snPaths })
+    then ST.put (s { pathCount = cnt + 1 })
     else case M.lookup curr gr of
            Nothing -> return ()
            Just cs -> foldM_ (\_ c -> 
-                      if S.member c sn then pure ()
+                      if c == start then pure ()
+                      else if S.member c sn then
+                        do 
+                          state <- ST.get
+                          case singleSeen state of
+                            Just _ -> return ()
+                            Nothing -> do
+                              ST.put (state { 
+                                         current = c,
+                                         singleSeen = Just c,
+                                         path = c : (path state)
+                                         })
+                              countPathsSingleRepeat gr end
+                              nextNewSt <- ST.get
+                              ST.put (state { pathCount = pathCount nextNewSt })
                       else do
                         curState <- ST.get
                         case c of 
@@ -86,23 +101,16 @@ countPathsSingleRepeat gr end = do
                             ST.put (curState { current = c, seen = S.insert c (seen curState), path = c : (path curState) })
                             countPathsSingleRepeat gr end
                             firstNewSt <- ST.get
-                            ST.put (curState { pathCount = pathCount firstNewSt, seenPaths = seenPaths firstNewSt})
-                            case singleSeen curState of
-                              Just _ -> return ()
-                              Nothing -> do
-                                ST.put (curState { current = c, singleSeen = Just c, path = c : (path curState), pathCount = pathCount firstNewSt, seenPaths = seenPaths firstNewSt })
-                                countPathsSingleRepeat gr end
-                                nextNewSt <- ST.get
-                                ST.put (curState { pathCount = pathCount nextNewSt, seenPaths = seenPaths nextNewSt})
+                            ST.put (curState { pathCount = pathCount firstNewSt })
                           Big _ -> do 
                             ST.put (curState { current = c, path = c : path curState })
                             countPathsSingleRepeat gr end
                             newSt <- ST.get
-                            ST.put (curState { pathCount = pathCount newSt, singleSeen = singleS, seenPaths = seenPaths newSt })) () cs
+                            ST.put (curState { pathCount = pathCount newSt, singleSeen = singleS })) () cs
 
 answerWithSingleSeen :: Graph -> Int
 answerWithSingleSeen gr = pathCount $
-  ST.execState (countPathsSingleRepeat gr (Small "end")) (SearchState (Small "start") (S.singleton (Small "start")) [Small "start"] 0 S.empty Nothing)
+  ST.execState (countPathsSingleRepeat gr (Small "end")) (SearchState (Small "start") (S.singleton (Small "start")) [Small "start"] 0 Nothing)
 
 part1 :: IO (Either ParseError Int)
 part1 = (fmap answer) <$> input
