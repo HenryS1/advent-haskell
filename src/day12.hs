@@ -6,9 +6,6 @@ import Text.Parsec.Combinator
 import Text.ParserCombinators.Parsec 
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import qualified Data.List as L
-import qualified Data.Array as A
-import qualified Data.Char as C
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Control.Monad.State as ST
