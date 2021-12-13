@@ -59,16 +59,13 @@ foldPaper (Fold LeftDir c) = foldl' (\st (Dot x y) -> let newX = if x <= c then 
 
 visibleAfterFirstFold :: Input -> Maybe Int
 visibleAfterFirstFold (Input _ []) = Nothing
-visibleAfterFirstFold (Input [] _) = Nothing
-visibleAfterFirstFold (Input ds@(_ : _) (f : _)) = Just $ S.size (foldPaper f (S.fromList ds))
+visibleAfterFirstFold (Input ds (f : _)) = Just $ S.size (foldPaper f (S.fromList ds))
 
 part1 :: IO (Either ParseError (Maybe Int))
 part1 = (fmap visibleAfterFirstFold) <$> input
 
 completeFold :: Input -> Paper
-completeFold (Input dots folds) = completeFold' (S.fromList dots) folds
-  where completeFold' ds [] = ds
-        completeFold' ds (f : rest) = completeFold' (foldPaper f ds) rest
+completeFold (Input dots folds) = foldl' (flip foldPaper) (S.fromList dots) folds
 
 data Coord = Coord Int Int
 
