@@ -1,6 +1,5 @@
 module Day14 where
 
-import Data.Foldable
 import Text.Parsec.Char
 import Text.Parsec.Combinator
 import Text.ParserCombinators.Parsec 
@@ -38,33 +37,6 @@ input = do
 
 type Polymer = String
 type Rules = M.Map String Char
-
-substitutions :: Polymer -> Rules -> Polymer
-substitutions [] _ = []
-substitutions lst@[_] _ = lst
-substitutions (c : tl@(d : _)) rs = case M.lookup [c,d] rs of
-                    Nothing -> c : substitutions tl rs
-                    Just btwn -> c : btwn : substitutions tl rs
-
-repeatedSubstitution :: Int -> Polymer -> Rules -> Polymer
-repeatedSubstitution i p rs = if i == 0 then p 
-  else repeatedSubstitution (i - 1) (substitutions p rs) rs
-
-type Counts = M.Map Char Int
-
-counts :: Polymer -> Counts
-counts = foldl' (\cnts c -> M.insertWith (+) c 1 cnts) M.empty
-
-answer :: Input -> Int
-answer (Input p rs) = let subst = repeatedSubstitution 10 p rs
-                          cnts = counts subst
-                          mx = foldl' max 0 cnts
-                          mn = foldl' min mx cnts
-                      in mx - mn
-
-part1 :: IO (Either ParseError Int)
-part1 = (fmap answer) <$> input
-
 type PairCounts = M.Map String Integer
 type Pair = String
 type Cache = M.Map (String, Int) PairCounts
@@ -107,12 +79,15 @@ applyToInput i (Input p rs) = applyRepeatedly rs i (countPairs p)
 elements :: PairCounts -> [Char]
 elements pcs = S.toList $ S.fromList $ concat $ M.keys pcs
 
-answerWithManyRepeates :: Input -> Integer
-answerWithManyRepeates inp@(Input p _) = let pcs = applyToInput 40 inp
-                                             f = head p
-                                             l = last p
-                                             elCounts = map (elementCount f l pcs) (elements pcs)
-                                         in maximum elCounts - minimum elCounts
+answer :: Int -> Input -> Integer
+answer i inp@(Input p _) = let pcs = applyToInput i inp
+                               f = head p
+                               l = last p
+                               elCounts = map (elementCount f l pcs) (elements pcs)
+                           in maximum elCounts - minimum elCounts
+
+part1 :: IO (Either ParseError Integer)
+part1 = (fmap (answer 10)) <$> input
 
 part2 :: IO (Either ParseError Integer)
-part2 = (fmap answerWithManyRepeates) <$> input
+part2 = (fmap (answer 40)) <$> input
