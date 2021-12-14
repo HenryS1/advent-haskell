@@ -78,7 +78,7 @@ countPairs (c : tl@(d : _)) = M.insertWith (+) [c, d] 1 $ countPairs tl
 applySubstitutions :: PairCounts -> Rules -> PairCounts
 applySubstitutions pcs rs = M.foldrWithKey (\pr@[a, b] cnt acc -> 
                                              case M.lookup pr rs of
-                                               Nothing -> acc
+                                               Nothing -> M.insertWith (+) pr 1 acc
                                                Just repl ->
                                                  M.insertWith (+) [a,repl] cnt $ 
                                                  M.insertWith (+) [repl, b] cnt acc) M.empty pcs
@@ -98,23 +98,21 @@ elementCount f l pcs c = let initCnt = initElementCount c pcs
                              lstCnt = lstElementCount c pcs
                          in (initCnt `max` lstCnt) + if f == c && l == c then 1 else 0
 
-repeats :: Rules -> Int -> PairCounts -> PairCounts
-repeats rs i pcs = if i == 0 then pcs else repeats rs (i - 1) (applySubstitutions pcs rs)
+applyRepeatedly :: Rules -> Int -> PairCounts -> PairCounts
+applyRepeatedly rs i pcs = if i == 0 then pcs else applyRepeatedly rs (i - 1) (applySubstitutions pcs rs)
 
-repeatedly :: Int -> Input -> PairCounts
-repeatedly i (Input p rs) = repeats rs i (countPairs p)
+applyToInput :: Int -> Input -> PairCounts
+applyToInput i (Input p rs) = applyRepeatedly rs i (countPairs p)
 
 elements :: PairCounts -> [Char]
 elements pcs = S.toList $ S.fromList $ concat $ M.keys pcs
 
-answer2 :: Input -> Integer
-answer2 inp@(Input p _) = let pcs = repeatedly 40 inp
-                              f = head p
-                              l = last p
-                              elCounts = map (elementCount f l pcs) (elements pcs)
-                          in maximum elCounts - minimum elCounts
+answerWithManyRepeates :: Input -> Integer
+answerWithManyRepeates inp@(Input p _) = let pcs = applyToInput 40 inp
+                                             f = head p
+                                             l = last p
+                                             elCounts = map (elementCount f l pcs) (elements pcs)
+                                         in maximum elCounts - minimum elCounts
 
 part2 :: IO (Either ParseError Integer)
-part2 = (fmap answer2) <$> input
-
-
+part2 = (fmap answerWithManyRepeates) <$> input
