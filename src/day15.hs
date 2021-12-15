@@ -9,47 +9,7 @@ import qualified Data.Text.IO as TIO
 import qualified Data.Array as A
 import qualified Data.Char as C
 import qualified Data.Set as S
-
-data LeftistHeap a = Empty | NonEmpty { 
-  rankNum :: Int,
-  x :: a,
-  left :: LeftistHeap a,
-  right ::  LeftistHeap a
-} deriving Show
-
-insert :: Ord a => a -> LeftistHeap a -> LeftistHeap a
-insert el heap = mergeHeaps (NonEmpty 1 el Empty Empty) heap
-
-rank :: LeftistHeap a -> Int
-rank (NonEmpty r _ _ _) = r
-rank Empty = 0
-
-makeTree :: a -> LeftistHeap a -> LeftistHeap a -> LeftistHeap a
-makeTree el one other = if rank one >= rank other
-  then NonEmpty (rank other + 1) el one other
-  else NonEmpty (rank one + 1) el other one
-
-mergeHeaps :: Ord a => LeftistHeap a -> LeftistHeap a -> LeftistHeap a
-mergeHeaps one Empty = one
-mergeHeaps Empty other = other
-mergeHeaps one@(NonEmpty _ el1 l1 r1) other@(NonEmpty _ el2 l2 r2) =
-  if el1 < el2
-  then makeTree el1 l1 (mergeHeaps r1 other)
-  else makeTree el2 l2 (mergeHeaps r2 one)
-
-data HeapError = DeleteCalledOnEmptyHeap
-
-findMin :: Ord a => LeftistHeap a -> Maybe a
-findMin Empty = Nothing
-findMin (NonEmpty _ e _ _) = Just e
-
-deleteMin :: Ord a => LeftistHeap a -> Maybe (a, LeftistHeap a)
-deleteMin Empty = Nothing
-deleteMin (NonEmpty _ e l r) = Just (e, mergeHeaps l r)
-
-heapToList :: LeftistHeap a -> [a]
-heapToList Empty = []
-heapToList (NonEmpty _ a l r) = a : heapToList r ++ heapToList l
+import qualified Heap as H
 
 parseDigit :: GenParser Char st Int
 parseDigit = C.digitToInt <$> digit
@@ -118,14 +78,14 @@ instance Ord SearchState where
 
 type Seen = S.Set Int
 
-findLowestRisk :: LeftistHeap SearchState -> Seen -> Grid -> Maybe SearchState
-findLowestRisk hp sn gr@(Grid rs cs es) = case deleteMin hp of
+findLowestRisk :: H.LeftistHeap SearchState -> Seen -> Grid -> Maybe SearchState
+findLowestRisk hp sn gr@(Grid rs cs es) = case H.deleteMin hp of
   Nothing -> Nothing
   Just (st, newHp) -> 
     if current st == rs * cs - 1
     then Just st
     else let ns = filter (not . ((flip S.member) sn)) $ neighbours gr (current st)
-             heapWithNbrs = foldl' (\h n -> insert (SearchState { risk = risk st + es A.! n, current = n, path = path st }) h) newHp ns
+             heapWithNbrs = foldl' (\h n -> H.insert (SearchState { risk = risk st + es A.! n, current = n, path = path st }) h) newHp ns
              newSeen = foldl' (\acc e -> S.insert e acc) sn ns
          in findLowestRisk heapWithNbrs newSeen gr
 
@@ -136,7 +96,7 @@ part1 = do
     Left err -> return $ Left err
     Right grid ->
       let initState = (SearchState { risk = 0, current = 0, path = [0] })
-      in return $ Right $ findLowestRisk (insert initState Empty) (S.singleton 0) grid
+      in return $ Right $ findLowestRisk (H.insert initState H.empty) (S.singleton 0) grid
 
 incrementGrid :: Grid -> Grid
 incrementGrid (Grid rs cs es) = 
@@ -152,4 +112,4 @@ part2 = do
     Left err -> return $ Left err
     Right grid ->
       let initState = (SearchState { risk = 0, current = 0, path = [0] })
-      in return $ Right $ findLowestRisk (insert initState Empty) (S.singleton 0) grid
+      in return $ Right $ findLowestRisk (H.insert initState H.empty) (S.singleton 0) grid
