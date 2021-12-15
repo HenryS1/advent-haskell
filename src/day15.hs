@@ -1,4 +1,4 @@
-module Day15 where
+module Day15 (part1, part2) where
 
 import Data.Foldable
 import Text.Parsec.Char
