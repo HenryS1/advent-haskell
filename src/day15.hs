@@ -6,7 +6,7 @@ import Text.Parsec.Combinator
 import Text.ParserCombinators.Parsec 
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import qualified Data.Array as A
+import qualified Data.Array.Unboxed as A
 import qualified Data.Char as C
 import qualified Data.Set as S
 import qualified Heap as H
@@ -17,7 +17,7 @@ parseDigit = C.digitToInt <$> digit
 parseRow :: GenParser Char st [Int]
 parseRow = many1 parseDigit 
 
-data Grid = Grid { rows :: Int, columns :: Int, entries :: A.Array Int Int } deriving Show
+data Grid = Grid { rows :: Int, columns :: Int, entries :: A.UArray Int Int } deriving Show
 
 parseGrid :: GenParser Char st Grid
 parseGrid = do
@@ -97,13 +97,6 @@ part1 = do
     Right grid ->
       let initState = (SearchState { risk = 0, current = 0, path = [0] })
       in return $ Right $ findLowestRisk (H.insert initState H.empty) (S.singleton 0) grid
-
-incrementGrid :: Grid -> Grid
-incrementGrid (Grid rs cs es) = 
-  let indices = A.listArray (0, rs * cs - 1) [0..(rs * cs - 1)]
-  in Grid rs cs (fmap (\i -> ((es A.! i + 1) `mod` 10) `max` 1) indices)
-
-type Entries = A.Array Int Int
 
 part2 :: IO (Either ParseError (Maybe SearchState))
 part2 = do
