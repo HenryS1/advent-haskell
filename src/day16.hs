@@ -1,16 +1,12 @@
 module Day16 where
 
-import Debug.Trace
 import Data.Foldable
 import Text.Parsec.Char
 import Text.Parsec.Combinator
 import Text.ParserCombinators.Parsec 
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import qualified Data.Array.Unboxed as A
 import qualified Data.Char as C
-import qualified Data.Set as S
-import qualified Heap as H
 
 bits :: GenParser Char st String
 bits = do
