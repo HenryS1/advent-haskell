@@ -8,6 +8,7 @@ import Text.ParserCombinators.Parsec
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Data.List as L
+import qualified Data.Set as S
 
 positiveInt :: GenParser Char st Int
 positiveInt = read <$> many1 digit
@@ -76,15 +77,69 @@ data MatchFailed = NoDifferenceChosen | DontMatch deriving Show
 --             (ds@(Right _), Left _) -> ds
 --             (Right ds1, Right ds2) -> Right (ds1 ++ ds2)
 
-haveOverlappingX :: Scanner -> Scanner -> Either MatchFailed [Int]
+matchWithDifference :: S.Set Int -> [Int] -> Int -> Either MatchFailed Int
+matchWithDifference is js d = 
+  let other = S.fromList $ map (\a -> a - d) js 
+  in if S.size (S.intersection is other) >= 12 then Right d else Left DontMatch
+
+-- matchDifferences :: [Int] -> [Int] -> ([Int], S.Set Int)
+-- matchDifferences one other = match' one other S.empty
+--   where oneSet = S.fromList one
+--         match' [] _ used = ([], used)
+--         match' _ [] used = ([], used)
+--         match' is@(i : iRest) js@(j : jRest) alreadyUsed = 
+--           trace ("NEXT I " ++ show i ++ " NEXT J " ++ show j) $
+--           let matchFirst = if S.member (j - i) alreadyUsed 
+--                 then Left DontMatch
+--                 else matchWithDifference oneSet js (j - i)
+--               (ds, nextUsed) = case matchFirst of
+--                 Left _ -> ([], S.insert (j - i) alreadyUsed)
+--                 Right v -> ([v], S.insert (j - i) alreadyUsed) 
+--               (skipIDs, skipIUsed) = match' iRest js nextUsed
+--               (skipJDs, skipJUsed) = match' is jRest skipIUsed
+--           in (ds ++ skipIDs ++ skipJDs, skipJUsed)
+              -- skipI = match' iRest js 
+              -- skipJ = match' is jRest
+
+type Differences = [Int]
+
+findMatches :: Differences -> [Int] -> [Int] -> Differences
+findMatches ds is js = filter (hasMatch is js) ds
+ 
+hasMatch :: [Int] -> [Int] -> Int -> Bool
+hasMatch is js d = let diffed = map (\j -> j - d) js
+                   in length (diffed `L.intersect` is) >= 12
+
+differencesBetween :: [Int] -> [Int] -> [Int]
+differencesBetween is js = is >>= (\i -> map (\j -> j - i) js)
+
+allDifferences :: [Int] -> [Int] -> S.Set Int
+allDifferences is js = S.fromList $ differencesBetween is js
+-- allDifferences [] _ = S.empty
+-- allDifferences _ [] = S.empty
+-- allDifferences is@(i : iRest) js@(j : jRest) = S.insert (i - j) $ allDifferences iRest jRest `S.union` allDifferences is
+
+flipOrientation :: [Int] -> [Int]
+flipOrientation is = map (*(-1)) is
+
+haveOverlappingX :: Scanner -> Scanner -> [Int]
 haveOverlappingX (Scanner _ bs1) (Scanner _ bs2) = 
   let xs1 = L.sort $ map beaconX bs1
       xs2 = L.sort $ map beaconX bs2
-  in matchDifferences xs1 xs2 12 Nothing
+      diffs = S.toList $ allDifferences xs1 xs2
+  in findMatches diffs xs1 xs2 ++ findMatches diffs xs1 (flipOrientation xs2)
+
+overlapDiffs :: [Int] -> [Int] -> [Int]
+overlapDiffs is js = 
+  let srtd1 = L.sort is
+      srtd2 = L.sort js
+      diffs = S.toList $ allDifferences srtd1 srtd2
+  in findMatches diffs srtd1 srtd2 ++ findMatches diffs srtd1 (flipOrientation srtd2)
 
 checkOverlapping :: [Scanner] -> Either MatchFailed [Int]
 checkOverlapping [] = Left DontMatch
 checkOverlapping [_] = Left DontMatch
-checkOverlapping (i : j : _) = haveOverlappingX i j
+checkOverlapping (i : j : _) = Right (haveOverlappingX i j)
+
 
 part1  = (fmap checkOverlapping) <$> input
