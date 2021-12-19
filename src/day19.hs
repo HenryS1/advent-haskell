@@ -77,11 +77,11 @@ findMatches :: Differences -> [Int] -> [Int] -> Differences
 findMatches ds is js = filter (hasMatch is js) ds
  
 hasMatch :: [Int] -> [Int] -> Difference -> Bool
-hasMatch is js (Difference d _ _ _) = let diffed = map (\j -> j - d) js
-                                      in length (diffed `L.intersect` is) >= 12
+hasMatch is js (Difference d _ _ _) = let diffed = map (\i -> i - d) is
+                                      in length (diffed `L.intersect` js) >= 12
 
 differencesBetween :: [Int] -> [Int] -> [Int]
-differencesBetween is js = [j - i | i <- is, j <- js]
+differencesBetween is js = [i - j | i <- is, j <- js]
 
 allDifferences :: [Int] -> [Int] -> [Int]
 allDifferences is js = S.toList $ S.fromList $ differencesBetween is js
@@ -178,7 +178,7 @@ allMatches scns = do
   return (scannerId s1, scannerId s2, d1, d2, d3)
 
 flipDifference :: Difference -> Difference
-flipDifference (Difference d f c1 c2) = Difference (-d) f c2 c1
+flipDifference (Difference d f c1 c2) = Difference (-d) f c1 c2
 
 findXDiff :: [Difference] -> Maybe Difference
 findXDiff = L.find ((==X) . differenceCoordOther)
@@ -209,7 +209,7 @@ findOffsetFromZero :: Int -> Offsets -> Maybe [Offset]
 findOffsetFromZero i offsets = findOffsets' S.empty [] i
   where findOffsets' :: S.Set Int -> [Offset] -> Int -> Maybe [Offset]
         findOffsets' seen acc curr = 
-          if curr == 0 then Just (reverse acc)
+          if curr == 0 then Just acc
           else case M.lookup curr offsets of
             Nothing -> Nothing
             Just os -> let unseen = filter (\o -> not $ S.member (offsetOther o) seen) os
@@ -228,11 +228,11 @@ findPaths pairOffsets =
 
 combineDifferences :: Difference -> Difference -> Difference
 combineDifferences (Difference d1 f1 cOne1 _) (Difference d2 f2 _ cOther2) =
-  if f1 == -1
-  then Difference (d1 + (f1 * f2 * d2)) f1 cOne1 cOther2
-  else if f2 == 1
-       then Difference (d1 + d2) f1 cOne1 cOther2
-       else Difference (d1 - d2) f1 cOne1 cOther2
+  Difference (d1 + (f1 * d2)) f2 cOne1 cOther2
+--  else Difference (d1 + d2) f1 cOne1 cOther2
+  -- else if f2 == 1
+  --      then Difference (d1 + d2) f1 cOne1 cOther2
+  --      else Difference (d1 - d2) f1 cOne1 cOther2
 
 
 findXInitDiff :: [Difference] -> Maybe Difference
@@ -244,6 +244,8 @@ findYInitDiff = L.find ((==Y) . differenceCoordOne)
 findZInitDiff :: [Difference] -> Maybe Difference
 findZInitDiff = L.find ((==Z) . differenceCoordOne)
 
+findPair :: Difference -> [Difference] -> Maybe Difference
+findPair d ds = find (\other -> differenceCoordOther d == differenceCoordOne other) ds
 
 combineOffsets :: Offset -> Offset -> Maybe Offset
 combineOffsets (Offset _ dX1 dY1 dZ1) (Offset j dX2 dY2 dZ2) = 
