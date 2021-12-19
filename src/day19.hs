@@ -51,64 +51,31 @@ input = do
 
 data MatchFailed = NoDifferenceChosen | DontMatch deriving Show
 
--- matchDifferences :: [Int] -> [Int] -> Int -> Maybe Int -> Either MatchFailed [Int]
--- matchDifferences _ _ 0 (Just d) = Right [d]
--- matchDifferences _ _ 0 Nothing = Left NoDifferenceChosen
--- matchDifferences _ [] _ _ = Left DontMatch
--- matchDifferences [] _ _ _ = Left DontMatch
--- matchDifferences is@(i : iRest) js@(j : jRest) rm Nothing = 
---   trace ("NEXT I " ++ show i ++ " NEXT J " ++ show j) $
---   let firstDiff = matchDifferences iRest jRest (rm - 1) (Just (i - j))
---       skipI = matchDifferences iRest js rm Nothing
---       skipJ = matchDifferences is jRest rm Nothing
---       allResults = [firstDiff, skipI, skipJ]
---   in case rights allResults of
---     [] -> Left (head (lefts allResults))
---     rs -> Right (concat rs)
--- matchDifferences is@(i : iRest) js@(j : jRest) rm df@(Just d) = 
---   trace ("CHOSEN D " ++ show d ++ " NEXT I " ++ show i ++ " NEXT J " ++ show j) $
---   if i - j == d 
---   then matchDifferences iRest jRest (rm - 1) df 
---   else let skipI = matchDifferences iRest js rm df
---            skipJ = matchDifferences is jRest rm df
---        in case (skipI, skipJ) of
---             (e1@(Left _), Left _) -> e1
---             (Left _, ds@(Right _)) -> ds
---             (ds@(Right _), Left _) -> ds
---             (Right ds1, Right ds2) -> Right (ds1 ++ ds2)
-
 matchWithDifference :: S.Set Int -> [Int] -> Int -> Either MatchFailed Int
 matchWithDifference is js d = 
   let other = S.fromList $ map (\a -> a - d) js 
   in if S.size (S.intersection is other) >= 12 then Right d else Left DontMatch
 
--- matchDifferences :: [Int] -> [Int] -> ([Int], S.Set Int)
--- matchDifferences one other = match' one other S.empty
---   where oneSet = S.fromList one
---         match' [] _ used = ([], used)
---         match' _ [] used = ([], used)
---         match' is@(i : iRest) js@(j : jRest) alreadyUsed = 
---           trace ("NEXT I " ++ show i ++ " NEXT J " ++ show j) $
---           let matchFirst = if S.member (j - i) alreadyUsed 
---                 then Left DontMatch
---                 else matchWithDifference oneSet js (j - i)
---               (ds, nextUsed) = case matchFirst of
---                 Left _ -> ([], S.insert (j - i) alreadyUsed)
---                 Right v -> ([v], S.insert (j - i) alreadyUsed) 
---               (skipIDs, skipIUsed) = match' iRest js nextUsed
---               (skipJDs, skipJUsed) = match' is jRest skipIUsed
---           in (ds ++ skipIDs ++ skipJDs, skipJUsed)
-              -- skipI = match' iRest js 
-              -- skipJ = match' is jRest
+data CoordType = X | Y | Z deriving Show
 
-type Differences = [(Int, Int)]
+data Difference = Difference { 
+  differenceD :: Int,
+  differenceFlip :: Int,
+  differenceCoordOne :: CoordType,
+  differenceCoordOther :: CoordType
+}
+
+instance Show Difference where
+  show (Difference d f c1 c2) = "(" ++ show d ++ "," ++ show f ++ "," ++ show c1 ++ "," ++ show c2 ++ ")"
+
+type Differences = [Difference]
 
 findMatches :: Differences -> [Int] -> [Int] -> Differences
 findMatches ds is js = filter (hasMatch is js) ds
  
-hasMatch :: [Int] -> [Int] -> (Int, Int) -> Bool
-hasMatch is js (d, _) = let diffed = map (\j -> j - d) js
-                        in length (diffed `L.intersect` is) >= 11
+hasMatch :: [Int] -> [Int] -> Difference -> Bool
+hasMatch is js (Difference d _ _ _) = let diffed = map (\j -> j - d) js
+                                      in length (diffed `L.intersect` is) >= 12
 
 differencesBetween :: [Int] -> [Int] -> [Int]
 differencesBetween is js = [j - i | i <- is, j <- js]
@@ -129,13 +96,13 @@ flipOrientation is = map (*(-1)) is
 --       diffs = S.toList $ allDifferences xs1 xs2
 --   in findMatches diffs xs1 xs2 ++ findMatches diffs xs1 (flipOrientation xs2)
 
-overlapDiffs :: [Int] -> [Int] -> [(Int, Int)]
-overlapDiffs is js = 
+overlapDiffs :: CoordType -> CoordType -> [Int] -> [Int] -> [Difference]
+overlapDiffs fstC sndC is js = 
   let diffs = allDifferences is js
       flipped = flipOrientation is
       diffsFlipped = allDifferences is flipped
-  in findMatches (map (\i -> (i, 1)) diffs) is js 
-     ++ findMatches (map (\i -> (i, -1)) diffsFlipped) is flipped
+  in findMatches (map (\i -> (Difference i 1 fstC sndC)) diffs) is js 
+     ++ findMatches (map (\i -> (Difference i (-1) fstC sndC)) diffsFlipped) is flipped
 
 chooseTwo :: [a] -> [(a, a)]
 chooseTwo as = chooseTwo' Nothing as
@@ -150,15 +117,54 @@ chooseTwo as = chooseTwo' Nothing as
 -- checkOverlapping [_] = Left DontMatch
 -- checkOverlapping (i : j : _) = Right (haveOverlappingX i j)
 
-xMatches :: (Scanner, Scanner) -> (Scanner, Scanner, [(Int, Int)])
+coordByType :: CoordType -> Scanner -> [Int]
+coordByType X = map beaconX . scannerBeacons
+coordByType Y = map beaconY . scannerBeacons
+coordByType Z = map beaconZ . scannerBeacons
+
+xMatches :: (Scanner, Scanner) -> (Scanner, Scanner, [Difference])
 xMatches (one, other) = 
   let xs1 = (map beaconX (scannerBeacons one))
-      allowedDiffs = overlapDiffs xs1 (map beaconX (scannerBeacons other))
-        ++ overlapDiffs xs1 (map beaconY (scannerBeacons other))
-        ++ overlapDiffs xs1 (map beaconZ (scannerBeacons other))
+      allowedDiffs = overlapDiffs X X xs1 (map beaconX (scannerBeacons other))
+        ++ overlapDiffs X Y xs1 (map beaconY (scannerBeacons other))
+        ++ overlapDiffs X Z xs1 (map beaconZ (scannerBeacons other))
   in (one, other, allowedDiffs)
   
-findXMatches :: [Scanner] -> [(Int, Int, [(Int, Int)])]
-findXMatches = (map (\(s1, s2, ds) -> (scannerId s1, scannerId s2, ds))) . filter (\(_, _, ds) -> not $ null ds) . map xMatches . chooseTwo
+findXMatches :: [Scanner] -> [(Scanner, Scanner, [Difference])]
+findXMatches = filter (\(_, _, ds) -> not $ null ds) . map xMatches . chooseTwo
 
-part1  = (fmap findXMatches) <$> input
+findYMatches :: Difference -> Scanner -> Scanner -> [Difference]
+findYMatches d s1 s2 = 
+  let ys1 = map beaconY (scannerBeacons s1)
+      rm = case differenceCoordOther d of
+        X -> [Y, Z]
+        Y -> [X, Z]
+        Z -> [X, Y]
+  in rm >>= (\tp -> overlapDiffs Y tp ys1 (coordByType tp s2))
+
+findZMatches :: Difference -> Difference -> Scanner -> Scanner -> [Difference]
+findZMatches xD yD s1 s2 =
+  let zs1 = coordByType Z s1
+      tp = case (differenceCoordOther xD, differenceCoordOther yD) of
+        (X, Y) -> Z
+        (Y, X) -> Z
+        (X, Z) -> Y
+        (Z, X) -> Y
+        (Y, Z) -> X
+        (Z, Y) -> X
+  in overlapDiffs Z tp zs1 (coordByType tp s2)
+
+matchesForPair :: Scanner -> Scanner -> [Difference] -> [(Scanner, Scanner, Difference, Difference, Difference)]
+matchesForPair s1 s2 ds = do
+  xD <- ds
+  yD <- findYMatches xD s1 s2
+  zD <- findZMatches xD yD s1 s2
+  return (s1, s2, xD, yD, zD)
+
+allMatches :: [Scanner] -> [(Int, Int, Difference, Difference, Difference)]
+allMatches scns = do
+  (s1, s2, xDs) <- findXMatches scns
+  (s1, s2, d1, d2, d3) <- matchesForPair s1 s2 xDs
+  return (scannerId s1, scannerId s2, d1, d2, d3)
+
+part1  = (fmap (map (\(s1, s2, ds) -> (scannerId s1, scannerId s2, ds)) . findXMatches)) <$> input
