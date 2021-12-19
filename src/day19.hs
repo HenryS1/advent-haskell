@@ -78,7 +78,10 @@ findMatches ds is js = filter (hasMatch is js) ds
  
 hasMatch :: [Int] -> [Int] -> Difference -> Bool
 hasMatch is js (Difference d _ _ _) = let diffed = map (\i -> i - d) is
-                                      in length (diffed `L.intersect` js) >= 12
+                                      in if length (diffed `L.intersect` js) >= 12
+                                         then --trace ("IS " ++ show is ++ " INTERSECTION " ++ show (diffed `L.intersect` js) ++ " D " ++ show d) $ True
+                                           True
+                                         else False
 
 differencesBetween :: [Int] -> [Int] -> [Int]
 differencesBetween is js = [i - j | i <- is, j <- js]
@@ -160,7 +163,7 @@ allMatches :: [Scanner] -> [(Int, Int, Difference, Difference, Difference)]
 allMatches scns = do
   (s1, s2, xDs) <- findXMatches scns
   (_, _, d1, d2, d3) <- matchesForPair s1 s2 xDs
-  return (scannerId s1, scannerId s2, d1, d2, d3)
+  return (scannerId s2, scannerId s1, d1, d2, d3)
 
 flipDifference :: Difference -> Difference
 flipDifference (Difference d f c1 c2) = Difference (-d) f c1 c2
