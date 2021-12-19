@@ -22,7 +22,7 @@ data Beacon = Beacon {
   beaconZ :: Int
 } deriving (Eq, Ord, Show)
 
-data Scanner = Scanner Int [Beacon] deriving Show
+data Scanner = Scanner { scannerId :: Int, scannerBeacons :: [Beacon] } deriving Show
 
 beacon :: GenParser Char st Beacon
 beacon = do
@@ -108,13 +108,13 @@ findMatches ds is js = filter (hasMatch is js) ds
  
 hasMatch :: [Int] -> [Int] -> Int -> Bool
 hasMatch is js d = let diffed = map (\j -> j - d) js
-                   in length (diffed `L.intersect` is) >= 12
+                   in length (diffed `L.intersect` is) >= 11
 
 differencesBetween :: [Int] -> [Int] -> [Int]
-differencesBetween is js = is >>= (\i -> map (\j -> j - i) js)
+differencesBetween is js = [j - i | i <- is, j <- js]
 
-allDifferences :: [Int] -> [Int] -> S.Set Int
-allDifferences is js = S.fromList $ differencesBetween is js
+allDifferences :: [Int] -> [Int] -> [Int]
+allDifferences is js = S.toList $ S.fromList $ differencesBetween is js
 -- allDifferences [] _ = S.empty
 -- allDifferences _ [] = S.empty
 -- allDifferences is@(i : iRest) js@(j : jRest) = S.insert (i - j) $ allDifferences iRest jRest `S.union` allDifferences is
@@ -122,24 +122,42 @@ allDifferences is js = S.fromList $ differencesBetween is js
 flipOrientation :: [Int] -> [Int]
 flipOrientation is = map (*(-1)) is
 
-haveOverlappingX :: Scanner -> Scanner -> [Int]
-haveOverlappingX (Scanner _ bs1) (Scanner _ bs2) = 
-  let xs1 = L.sort $ map beaconX bs1
-      xs2 = L.sort $ map beaconX bs2
-      diffs = S.toList $ allDifferences xs1 xs2
-  in findMatches diffs xs1 xs2 ++ findMatches diffs xs1 (flipOrientation xs2)
+-- haveOverlappingX :: Scanner -> Scanner -> [Int]
+-- haveOverlappingX (Scanner _ bs1) (Scanner _ bs2) = 
+--   let xs1 = L.sort $ map beaconX bs1
+--       xs2 = L.sort $ map beaconX bs2
+--       diffs = S.toList $ allDifferences xs1 xs2
+--   in findMatches diffs xs1 xs2 ++ findMatches diffs xs1 (flipOrientation xs2)
 
 overlapDiffs :: [Int] -> [Int] -> [Int]
 overlapDiffs is js = 
-  let srtd1 = L.sort is
-      srtd2 = L.sort js
-      diffs = S.toList $ allDifferences srtd1 srtd2
-  in findMatches diffs srtd1 srtd2 ++ findMatches diffs srtd1 (flipOrientation srtd2)
+  let diffs = allDifferences is js
+      flipped = flipOrientation is
+      diffsFlipped = allDifferences is flipped
+  in findMatches diffs is js ++ findMatches diffsFlipped is flipped
 
-checkOverlapping :: [Scanner] -> Either MatchFailed [Int]
-checkOverlapping [] = Left DontMatch
-checkOverlapping [_] = Left DontMatch
-checkOverlapping (i : j : _) = Right (haveOverlappingX i j)
+chooseTwo :: [a] -> [(a, a)]
+chooseTwo as = chooseTwo' Nothing as
+  where chooseTwo' _ [] = []
+        chooseTwo' Nothing [_] = []
+        chooseTwo' Nothing (a : rest) = chooseTwo' (Just a) rest ++ chooseTwo' Nothing rest
+        chooseTwo' j@(Just one) (other : rest) =
+          (one, other) : (chooseTwo' j rest)
 
+-- checkOverlapping :: [Scanner] -> Either MatchFailed [Int]
+-- checkOverlapping [] = Left DontMatch
+-- checkOverlapping [_] = Left DontMatch
+-- checkOverlapping (i : j : _) = Right (haveOverlappingX i j)
 
-part1  = (fmap checkOverlapping) <$> input
+xMatches :: (Scanner, Scanner) -> (Scanner, Scanner, [Int])
+xMatches (one, other) = 
+  let xs1 = (map beaconX (scannerBeacons one))
+      allowedDiffs = overlapDiffs xs1 (map beaconX (scannerBeacons other))
+        ++ overlapDiffs xs1 (map beaconY (scannerBeacons other))
+        ++ overlapDiffs xs1 (map beaconZ (scannerBeacons other))
+  in (one, other, allowedDiffs)
+  
+findXMatches :: [Scanner] -> [(Int, Int, [Int])]
+findXMatches = (map (\(s1, s2, ds) -> (scannerId s1, scannerId s2, ds))) . filter (\(_, _, ds) -> not $ null ds) . map xMatches . chooseTwo
+
+part1  = (fmap findXMatches) <$> input
