@@ -249,19 +249,15 @@ findPair d ds = find (\other -> differenceCoordOther d == differenceCoordOne oth
 
 combineOffsets :: Offset -> Offset -> Maybe Offset
 combineOffsets (Offset _ dX1 dY1 dZ1) (Offset j dX2 dY2 dZ2) = 
-  let ds = [dX1, dY1, dZ1]
+  let ds = [dX2, dY2, dZ2]
   in do
-    x <- findXInitDiff ds
-    y <- findYInitDiff ds
-    z <- findZInitDiff ds
-    let c1 = combineDifferences x dX2
-    let c2 = combineDifferences y dY2
-    let c3 = combineDifferences z dZ2
-    let ds2 = [c1, c2, c3]
-    xC <- findXInitDiff ds2
-    yC <- findYInitDiff ds2
-    zC <- findZInitDiff ds2
-    return (Offset j xC yC zC)
+    x <- findPair dX1 ds
+    y <- findPair dY1 ds
+    z <- findPair dZ1 ds
+    let c1 = combineDifferences dX1 x
+    let c2 = combineDifferences dY1 y 
+    let c3 = combineDifferences dZ1 z
+    return (Offset j c1 c2 c3)
 
 combineAllOffsets :: [Offset] -> Maybe Offset
 combineAllOffsets [] = Nothing
