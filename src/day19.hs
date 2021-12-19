@@ -9,6 +9,7 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Data.List as L
 import qualified Data.Set as S
+import qualified Data.Map as M
 
 positiveInt :: GenParser Char st Int
 positiveInt = read <$> many1 digit
@@ -99,7 +100,7 @@ flipOrientation is = map (*(-1)) is
 overlapDiffs :: CoordType -> CoordType -> [Int] -> [Int] -> [Difference]
 overlapDiffs fstC sndC is js = 
   let diffs = allDifferences is js
-      flipped = flipOrientation is
+      flipped = flipOrientation js
       diffsFlipped = allDifferences is flipped
   in findMatches (map (\i -> (Difference i 1 fstC sndC)) diffs) is js 
      ++ findMatches (map (\i -> (Difference i (-1) fstC sndC)) diffsFlipped) is flipped
@@ -161,10 +162,16 @@ matchesForPair s1 s2 ds = do
   zD <- findZMatches xD yD s1 s2
   return (s1, s2, xD, yD, zD)
 
+data Offset = Offset Int Difference Difference Difference
+
+type ScannerOffsets = M.Map Int Offset
+
 allMatches :: [Scanner] -> [(Int, Int, Difference, Difference, Difference)]
 allMatches scns = do
   (s1, s2, xDs) <- findXMatches scns
   (s1, s2, d1, d2, d3) <- matchesForPair s1 s2 xDs
   return (scannerId s1, scannerId s2, d1, d2, d3)
 
-part1  = (fmap (map (\(s1, s2, ds) -> (scannerId s1, scannerId s2, ds)) . findXMatches)) <$> input
+--part1  = (fmap (map (\(s1, s2, ds) -> (scannerId s1, scannerId s2, ds)) . findXMatches)) <$> input
+
+part1 = (fmap allMatches) <$> input
