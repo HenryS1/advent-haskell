@@ -69,7 +69,7 @@ data Difference = Difference {
 }
 
 instance Show Difference where
-  show (Difference d f c1 c2) = "(" ++ show d ++ "," ++ show f ++ "," ++ show c1 ++ "," ++ show c2 ++ ")"
+  show (Difference d f c1 c2) = "(Difference " ++ show d ++ " " ++ show f ++ " " ++ show c1 ++ " " ++ show c2 ++ ")"
 
 type Differences = [Difference]
 
@@ -199,11 +199,11 @@ flipOffset (one, other, d1, d2, d3) =
     return (other, one, flipDifference xD, flipDifference yD, flipDifference zD)
 
 mapOffsets :: [(Int, Int, Difference, Difference, Difference)] -> Offsets
-mapOffsets = foldl' (\mp o@(one, other, xD, yD, zD) -> M.insertWith (++) other [(Offset one xD yD zD)]
+mapOffsets = foldl' (\mp o@(one, other, xD, yD, zD) -> M.insertWith (++) one [(Offset other xD yD zD)]
                     $ case flipOffset o of
                         Nothing -> mp
                         Just (one2, other2, xD2, yD2, zD2) -> 
-                          M.insertWith (++) other2 [(Offset one2 xD2 yD2 zD2)] mp) M.empty
+                          M.insertWith (++) one2 [(Offset other2 xD2 yD2 zD2)] mp) M.empty
 
 findOffsetFromZero :: Int -> Offsets -> Maybe [Offset]
 findOffsetFromZero i offsets = findOffsets' S.empty [] i
@@ -273,4 +273,4 @@ offsetsToZero pairOffsets =
   let paths = findPaths pairOffsets
   in map (\(i, os) -> (i, os >>= combineAllOffsets)) paths
 
-part1 = (fmap (findPaths . allMatches)) <$> input
+part1 = (fmap (mapOffsets . allMatches)) <$> input
