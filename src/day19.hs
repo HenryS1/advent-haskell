@@ -101,14 +101,14 @@ matchWithDifference is js d =
               -- skipI = match' iRest js 
               -- skipJ = match' is jRest
 
-type Differences = [Int]
+type Differences = [(Int, Int)]
 
 findMatches :: Differences -> [Int] -> [Int] -> Differences
 findMatches ds is js = filter (hasMatch is js) ds
  
-hasMatch :: [Int] -> [Int] -> Int -> Bool
-hasMatch is js d = let diffed = map (\j -> j - d) js
-                   in length (diffed `L.intersect` is) >= 11
+hasMatch :: [Int] -> [Int] -> (Int, Int) -> Bool
+hasMatch is js (d, _) = let diffed = map (\j -> j - d) js
+                        in length (diffed `L.intersect` is) >= 11
 
 differencesBetween :: [Int] -> [Int] -> [Int]
 differencesBetween is js = [j - i | i <- is, j <- js]
@@ -129,12 +129,13 @@ flipOrientation is = map (*(-1)) is
 --       diffs = S.toList $ allDifferences xs1 xs2
 --   in findMatches diffs xs1 xs2 ++ findMatches diffs xs1 (flipOrientation xs2)
 
-overlapDiffs :: [Int] -> [Int] -> [Int]
+overlapDiffs :: [Int] -> [Int] -> [(Int, Int)]
 overlapDiffs is js = 
   let diffs = allDifferences is js
       flipped = flipOrientation is
       diffsFlipped = allDifferences is flipped
-  in findMatches diffs is js ++ findMatches diffsFlipped is flipped
+  in findMatches (map (\i -> (i, 1)) diffs) is js 
+     ++ findMatches (map (\i -> (i, -1)) diffsFlipped) is flipped
 
 chooseTwo :: [a] -> [(a, a)]
 chooseTwo as = chooseTwo' Nothing as
@@ -149,7 +150,7 @@ chooseTwo as = chooseTwo' Nothing as
 -- checkOverlapping [_] = Left DontMatch
 -- checkOverlapping (i : j : _) = Right (haveOverlappingX i j)
 
-xMatches :: (Scanner, Scanner) -> (Scanner, Scanner, [Int])
+xMatches :: (Scanner, Scanner) -> (Scanner, Scanner, [(Int, Int)])
 xMatches (one, other) = 
   let xs1 = (map beaconX (scannerBeacons one))
       allowedDiffs = overlapDiffs xs1 (map beaconX (scannerBeacons other))
@@ -157,7 +158,7 @@ xMatches (one, other) =
         ++ overlapDiffs xs1 (map beaconZ (scannerBeacons other))
   in (one, other, allowedDiffs)
   
-findXMatches :: [Scanner] -> [(Int, Int, [Int])]
+findXMatches :: [Scanner] -> [(Int, Int, [(Int, Int)])]
 findXMatches = (map (\(s1, s2, ds) -> (scannerId s1, scannerId s2, ds))) . filter (\(_, _, ds) -> not $ null ds) . map xMatches . chooseTwo
 
 part1  = (fmap findXMatches) <$> input
