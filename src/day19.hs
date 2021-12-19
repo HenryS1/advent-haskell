@@ -85,19 +85,9 @@ differencesBetween is js = [i - j | i <- is, j <- js]
 
 allDifferences :: [Int] -> [Int] -> [Int]
 allDifferences is js = S.toList $ S.fromList $ differencesBetween is js
--- allDifferences [] _ = S.empty
--- allDifferences _ [] = S.empty
--- allDifferences is@(i : iRest) js@(j : jRest) = S.insert (i - j) $ allDifferences iRest jRest `S.union` allDifferences is
 
 flipOrientation :: [Int] -> [Int]
 flipOrientation is = map (*(-1)) is
-
--- haveOverlappingX :: Scanner -> Scanner -> [Int]
--- haveOverlappingX (Scanner _ bs1) (Scanner _ bs2) = 
---   let xs1 = L.sort $ map beaconX bs1
---       xs2 = L.sort $ map beaconX bs2
---       diffs = S.toList $ allDifferences xs1 xs2
---   in findMatches diffs xs1 xs2 ++ findMatches diffs xs1 (flipOrientation xs2)
 
 overlapDiffs :: CoordType -> CoordType -> [Int] -> [Int] -> [Difference]
 overlapDiffs fstC sndC is js = 
@@ -114,11 +104,6 @@ chooseTwo as = chooseTwo' Nothing as
         chooseTwo' Nothing (a : rest) = chooseTwo' (Just a) rest ++ chooseTwo' Nothing rest
         chooseTwo' j@(Just one) (other : rest) =
           (one, other) : (chooseTwo' j rest)
-
--- checkOverlapping :: [Scanner] -> Either MatchFailed [Int]
--- checkOverlapping [] = Left DontMatch
--- checkOverlapping [_] = Left DontMatch
--- checkOverlapping (i : j : _) = Right (haveOverlappingX i j)
 
 coordByType :: CoordType -> Scanner -> [Int]
 coordByType X = map beaconX . scannerBeacons
@@ -223,6 +208,25 @@ findOffsetFromZero i offsets = findOffsets' S.empty [] i
 
 --part1  = (fmap (map (\(s1, s2, ds) -> (scannerId s1, scannerId s2, ds)) . findXMatches)) <$> input
 
+findPathToZero :: Int -> Transforms -> Maybe [Transform]
+findPathToZero i offsets = findTransforms' S.empty [] i
+  where findTransforms' :: S.Set Int -> [Transform] -> Int -> Maybe [Transform]
+        findTransforms' seen acc curr = 
+          if curr == 0 then Just (reverse acc)
+          else case M.lookup curr offsets of
+            Nothing -> Nothing
+            Just ts -> let unseen = filter (\tr -> not $ S.member (transformEnd tr) seen) ts
+                           newSeen = foldl' (\sn o -> S.insert (transformEnd o) sn) seen unseen
+                       in case find isJust $ map (\o -> findTransforms' newSeen (o : acc) (transformEnd o)) unseen of
+                            Nothing -> Nothing
+                            Just path -> path
+
+findTransformPaths :: [(Int, Int, Difference, Difference, Difference)] -> [(Int, Maybe [Transform])]
+findTransformPaths pairOffsets = 
+  let offsets = mapTransforms pairOffsets
+      coords = S.toList $ foldl' (\st (i, j, _, _, _) -> S.insert i $ S.insert j st) S.empty pairOffsets
+  in map (\i -> (i, findPathToZero i offsets)) coords
+
 findPaths :: [(Int, Int, Difference, Difference, Difference)] -> [(Int, Maybe [Offset])]
 findPaths pairOffsets = 
   let offsets = mapOffsets pairOffsets
@@ -290,12 +294,6 @@ combineAllOffsets (first : rest) =
                       Nothing -> Nothing
                       Just off -> combineOffsets off o) (Just first) rest
 
-data Col = Col CoordType Int deriving Show
-
-data Matrix = Matrix [Int]
-
-data Vec = Vec [Int]
-
 dotVecs :: [Int] -> [Int] -> Int
 dotVecs xs ys = sum $ zipWith (*) xs ys
 
@@ -312,6 +310,9 @@ inv :: [[Int]] -> [[Int]]
 inv = L.transpose
 
 data Transform = Transform Int Int [[Int]] [Int] deriving Show
+
+transformEnd :: Transform -> Int
+transformEnd (Transform _ e _ _) = e
 
 composeTransforms :: Transform -> Transform -> Transform
 composeTransforms (Transform start _ m1 v1) (Transform _ end m2 v2) = 
@@ -347,7 +348,7 @@ makeTransform (s, e, d1, d2, d3) =
 inverse :: Transform -> Transform
 inverse (Transform s e m v) = 
   let matInv = inv m
-  in (Transform s e matInv (scalarTimesVec (-1) (matTimesVec matInv v)))
+  in (Transform e s matInv (scalarTimesVec (-1) (matTimesVec matInv v)))
 
 offsetsToZero :: [(Int, Int, Difference, Difference, Difference)] -> [(Int, Maybe Offset)]
 offsetsToZero pairOffsets =
@@ -363,8 +364,35 @@ mapTransforms = foldl' (\mp o@(one, other, _, _, _) ->
                           in M.insertWith (++) one [tr]
                              $ M.insertWith (++) other [invTr] mp) M.empty
 
+composeAllTransforms :: [Transform] -> Maybe Transform
+composeAllTransforms [] = Nothing
+composeAllTransforms ts@(_ : _) = Just $ foldr1 composeTransforms ts
 
--- composeOffsets :: Offset -> Offset -> Offset
--- composeOffsets (Offset _ dX1 dY1 dZ1) (Offset j dX2 dY2 dZ2) =
+transformsToZero :: [(Int, Int, Difference, Difference, Difference)] -> M.Map Int (Maybe Transform)
+transformsToZero pairOffsets = 
+  let paths = findTransformPaths pairOffsets
+  in M.fromList $ map (\(i, trs) -> (i, trs >>= composeAllTransforms)) paths
 
-part1 = (fmap (mapTransforms . allMatches)) <$> input
+applyTransform :: Transform -> [Int] -> [Int]
+applyTransform (Transform _ _ m v) b = addVectors (matTimesVec m b) v
+
+beaconCoords :: Beacon -> [Int]
+beaconCoords (Beacon x y z) = [x, y, z]
+
+takeCoordinatesToZero :: Scanner -> M.Map Int (Maybe Transform) -> Maybe [[Int]]
+takeCoordinatesToZero s ts = case M.lookup (scannerId s) ts of
+  Nothing -> Nothing
+  Just Nothing -> Just (map beaconCoords (scannerBeacons s))
+  Just (Just tr) -> Just $ map (applyTransform tr) $ map beaconCoords (scannerBeacons s)
+
+coordsAtZero :: [Scanner] -> M.Map Int (Maybe Transform) -> S.Set [Int]
+coordsAtZero scns ts = foldl' (\st sc -> case takeCoordinatesToZero sc ts of
+                                  Nothing -> st
+                                  Just crds -> S.union st (S.fromList crds)) S.empty scns
+
+answer :: [Scanner] -> S.Set [Int]
+answer scns = 
+  let ts = transformsToZero $ allMatches scns
+  in coordsAtZero scns ts
+
+part1 = (fmap (findTransformPaths . allMatches)) <$> input
