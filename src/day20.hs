@@ -36,7 +36,7 @@ parseAlgorithm = do
   return (A.listArray (0, length alg - 1) alg)
 
 parseRow :: GenParser Char st String
-parseRow = (\s -> "...." ++ s ++ "....") <$> many1 (oneOf ['#', '.'])
+parseRow = (\s -> "....." ++ s ++ ".....") <$> many1 (oneOf ['#', '.'])
 
 parseImage :: GenParser Char st Image
 parseImage = do
@@ -44,8 +44,8 @@ parseImage = do
   rest <- many1 (parseRow <* endOfLine)
   let cs = length first
   let emptyRow = take cs $ repeat '.'
-  let rs = length rest + 9
-  let allRows = concat ((emptyRow : emptyRow : emptyRow : emptyRow : first : rest) ++ [emptyRow, emptyRow, emptyRow, emptyRow])
+  let rs = length rest + 11
+  let allRows = concat ((emptyRow : emptyRow : emptyRow : emptyRow : emptyRow : first : rest) ++ [emptyRow, emptyRow, emptyRow, emptyRow, emptyRow])
   let indices = A.listArray (0, rs * cs - 1) $ take (rs * cs) [0..]
   return $ Image rs cs (A.listArray (0, (rs * cs) - 1) $ map (\c -> if c == '.' then 0 else 1) allRows) indices
 
@@ -81,13 +81,14 @@ closeBy (Image _ cs _ _) i j = let (r1, c1) = i `divMod` cs
                                in abs (r1 - r2) <= 1 && abs (c1 - c2) <= 1
 
 neighbours :: Image -> Int -> [Int]
-neighbours im@(Image rs cs _ _) i = filter (\j -> j >= 0 && j < (rs * cs - 1) && closeBy im i j) $
+neighbours im@(Image rs cs _ _) i = filter (\j -> closeBy im i j) $
   [i - cs - 1, i - cs, i - cs + 1, i - 1, i, i + 1, i + cs - 1, i + cs, i + cs + 1]
 
 pixelCoord :: Image -> Int -> Int
-pixelCoord img@(Image _ _ ps _) i = let bits = map (\n -> ps A.! n) $ neighbours img i
-                                    in --trace ("BITS " ++ show bits) $
-                                       bitsToInt bits
+pixelCoord img@(Image rs cs ps _) i = 
+  let bits = map (\n -> if n >= 0 && n < (rs * cs - 1) then ps A.! n else 0) $ neighbours img i
+  in --trace ("BITS " ++ show bits) $
+    bitsToInt bits
 
 nextImage :: Algorithm -> Image -> Image
 nextImage alg img@(Image rs cs _ is) = 
@@ -96,10 +97,24 @@ nextImage alg img@(Image rs cs _ is) =
                              if alg A.! pc == '.' then 0 else 1) is
   in Image rs cs newPs is
 
+iterImage :: Algorithm -> Image -> Int -> Image
+iterImage _ img 0 = img
+iterImage alg img i = iterImage alg (nextImage alg img) (i - 1)
+
 --part1 :: IO (Either ParseError Image)
 part1 = do
   parsedInput <- input
   return $ case parsedInput of
     Left err -> Left err
-    Right (Input alg img) -> let (Image _ _ final _) = nextImage alg (nextImage alg img)
-                             in Right (foldl' (+) 0 final)
+    Right (Input alg img) -> let (Image rs cs ps is) = iterImage alg img 2
+                             in Right (foldl' (\total i -> let (r, c) = i `divMod` cs
+                                                           in if c == 0 || c == cs - 1 || r == 0 || r == rs - 1 
+                                                              then total else 
+                                                  ps A.! i + total) 0 is)
+
+part2 = do
+  parsedInput <- input
+  return $ case parsedInput of
+    Left err -> Left err
+    Right (Input alg img) -> let im@(Image rs cs ps is) = iterImage alg img 6
+                             in Right (foldl' (+) 0 ps)
