@@ -1,17 +1,11 @@
-module Main where
+module Day20 where
 
-import Debug.Trace
-import Data.Maybe
 import Data.Foldable
-import Data.Either
 import Text.Parsec.Char
 import Text.Parsec.Combinator
 import Text.ParserCombinators.Parsec 
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import qualified Data.List as L
-import qualified Data.Set as S
-import qualified Data.Map as M
 import qualified Data.Array as A
 
 positiveInt :: GenParser Char st Int
@@ -84,25 +78,21 @@ closeBy (Image _ cs _ _) i j = let (r1, c1) = i `divMod` cs
                                in abs (r1 - r2) <= 1 && abs (c1 - c2) <= 1
 
 neighbours :: Image -> Int -> [Int]
-neighbours im@(Image rs cs _ _) i = filter (\j -> closeBy im i j) $
+neighbours (Image _ cs _ _) i = 
   [i - cs - 1, i - cs, i - cs + 1, i - 1, i, i + 1, i + cs - 1, i + cs, i + cs + 1]
 
 pixelCoord :: Int -> Image -> Int -> Int
 pixelCoord turn img@(Image rs cs ps _) i = 
-  let bits = map (\n -> 
-
-                    if n >= 0 && n < (rs * cs - 1) then ps A.! n else 
-                     if turn `mod` 2 == 0 then 0 else 1) $ neighbours img i
-  in --trace ("BITS " ++ show bits) $
-    bitsToInt bits
+  let bits = map (\n -> let (r, c) = n `divMod` cs        
+                        in if r >= 0 && r < rs && c >= 0 && c < cs
+                           then ps A.! n else 
+                             if turn `mod` 2 == 0 then 0 else 1) $ neighbours img i
+  in bitsToInt bits
 
 nextImage :: Int -> Algorithm -> Image -> Image
 nextImage turn alg img@(Image rs cs _ is) = 
   let newPs = fmap (\i -> let pc = pixelCoord turn img i
-                              (r, c) = i `divMod` cs
-                          in --trace ("I " ++ show i ++ " PC " ++ show pc ++ " ALG PC " ++ show (alg A.! pc)) $
-                            --if r > 0 && r < rs - 1 && c > 0 && c < cs - 1 && alg A.! pc == '#'
-                            if alg A.! pc == '#'
+                          in if alg A.! pc == '#'
                              then 1 else 0) is
   in Image rs cs newPs is
 
@@ -110,29 +100,19 @@ iterImage :: Algorithm -> Image -> Int -> Int -> Image
 iterImage _ img 0 _ = img
 iterImage alg img i turn = iterImage alg (nextImage turn alg img) (i - 1) (turn + 1)
 
---part1 :: IO (Either ParseError Image)
+part1 :: IO (Either ParseError Int)
 part1 = do
   parsedInput <- input
   return $ case parsedInput of
     Left err -> Left err
-    Right (Input alg img) -> let (Image rs cs ps is) = iterImage alg img 2 1
-                             in Right (foldl' (\total i -> let (r, c) = i `divMod` cs
-                                                           in if c == 0 || c == cs - 1 || r == 0 || r == rs - 1 
-                                                              then total else 
-                                                  ps A.! i + total) 0 is)
+    Right (Input alg img) -> let (Image _ _ ps _) = iterImage alg img 2 0
+                             in Right (foldl' (+) 0 ps)
 
+part2 :: IO (Either ParseError Int)
 part2 = do
   parsedInput <- input
   return $ case parsedInput of
     Left err -> Left err
-    Right (Input alg img) -> let im@(Image rs cs ps is) = iterImage alg img 2 0
-                             in Right im
--- (foldl' 
---                                        (\total i -> 
---                                            let (r, c) = i `divMod` cs
---                                            in if c == 0 || c == cs - 1 || r == 0 || r == rs - 1 
---                                               then total else 
---                                                 ps A.! i + total) 0 is)
+    Right (Input alg img) -> let (Image _ _ ps _) = iterImage alg img 50 0
+                             in Right (foldl' (+) 0 ps)
 
-main :: IO ()
-main = part2 >>= (putStrLn . show)
