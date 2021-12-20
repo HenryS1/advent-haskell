@@ -1,9 +1,7 @@
 module Day19 where
 
-import Debug.Trace
 import Data.Maybe
 import Data.Foldable
-import Data.Either
 import Text.Parsec.Char
 import Text.Parsec.Combinator
 import Text.ParserCombinators.Parsec 
@@ -152,70 +150,17 @@ matchesForPair s1 s2 ds = do
   zD <- findZMatches xD yD s1 s2
   return (s1, s2, xD, yD, zD)
 
-data Offset = Offset Int Difference Difference Difference deriving Show
-
-offsetOther :: Offset -> Int
-offsetOther (Offset other _ _ _) = other
-
-type Offsets = M.Map Int [Offset]
-
 allMatches :: [Scanner] -> [(Int, Int, Difference, Difference, Difference)]
 allMatches scns = do
   (s1, s2, xDs) <- findXMatches scns
   (_, _, d1, d2, d3) <- matchesForPair s1 s2 xDs
   return (scannerId s2, scannerId s1, d1, d2, d3)
 
-flipDifference :: Difference -> Difference
-flipDifference (Difference d f c1 c2) = Difference (-d) f c1 c2
-
-findXDiff :: [Difference] -> Maybe Difference
-findXDiff = L.find ((==X) . differenceCoordOther)
-
-findYDiff :: [Difference] -> Maybe Difference
-findYDiff = L.find ((==Y) . differenceCoordOther)
-
-findZDiff :: [Difference] -> Maybe Difference
-findZDiff = L.find ((==Z) . differenceCoordOther)
-
-flipOffset :: (Int, Int, Difference, Difference, Difference) -> Maybe (Int, Int, Difference, Difference, Difference)
-flipOffset (one, other, d1, d2, d3) = 
-  let ds = [d1, d2, d3]
-  in do
-    xD <- findXDiff ds
-    yD <- findYDiff ds
-    zD <- findZDiff ds
-    return (other, one, flipDifference d1, flipDifference d2, flipDifference d3)
-
-mapOffsets :: [(Int, Int, Difference, Difference, Difference)] -> Offsets
-mapOffsets = foldl' (\mp o@(one, other, xD, yD, zD) -> M.insertWith (++) one [(Offset other xD yD zD)]
-                    $ case flipOffset o of
-                        Nothing -> mp
-                        Just (one2, other2, xD2, yD2, zD2) -> 
-                          M.insertWith (++) one2 [(Offset other2 xD2 yD2 zD2)] mp) M.empty
-
-mapOffsetsFromZero :: [(Int, Int, Difference, Difference, Difference)] -> Offsets
-mapOffsetsFromZero = foldl' (\mp o@(one, other, xD, yD, zD) -> M.insertWith (++) one [(Offset other xD yD zD)] mp) M.empty
-
-findOffsetFromZero :: Int -> Offsets -> Maybe [Offset]
-findOffsetFromZero i offsets = findOffsets' S.empty [] i
-  where findOffsets' :: S.Set Int -> [Offset] -> Int -> Maybe [Offset]
-        findOffsets' seen acc curr = 
-          if curr == 0 then Just (reverse acc)
-          else case M.lookup curr offsets of
-            Nothing -> Nothing
-            Just os -> let unseen = filter (\o -> not $ S.member (offsetOther o) seen) os
-                           newSeen = foldl' (\sn o -> S.insert (offsetOther o) sn) seen unseen
-                       in case find isJust $ map (\o -> findOffsets' newSeen (o : acc) (offsetOther o)) unseen of
-                            Nothing -> Nothing
-                            Just path -> path
-
---part1  = (fmap (map (\(s1, s2, ds) -> (scannerId s1, scannerId s2, ds)) . findXMatches)) <$> input
-
 findPathToZero :: Int -> Transforms -> Maybe [Transform]
 findPathToZero i offsets = findTransforms' S.empty [] i
   where findTransforms' :: S.Set Int -> [Transform] -> Int -> Maybe [Transform]
         findTransforms' seen acc curr = 
-          if curr == 0 then Just (reverse acc)
+          if curr == 0 then Just acc
           else case M.lookup curr offsets of
             Nothing -> Nothing
             Just ts -> let unseen = filter (\tr -> not $ S.member (transformEnd tr) seen) ts
@@ -230,73 +175,6 @@ findTransformPaths pairOffsets =
       coords = S.toList $ foldl' (\st (i, j, _, _, _) -> S.insert i $ S.insert j st) S.empty pairOffsets
   in map (\i -> (i, findPathToZero i offsets)) coords
 
-findPaths :: [(Int, Int, Difference, Difference, Difference)] -> [(Int, Maybe [Offset])]
-findPaths pairOffsets = 
-  let offsets = mapOffsets pairOffsets
-      coords = S.toList $ foldl' (\st (i, j, _, _, _) -> S.insert i $ S.insert j st) S.empty pairOffsets
-  in map (\i -> (i, findOffsetFromZero i offsets)) coords
-
-noOffset :: Int -> Offset
-noOffset i = (Offset i (Difference 0 1 X X) (Difference 0 1 Y Y) (Difference 0 1 Z Z))
-
-findDestinationsFromZero :: Offsets -> [(Int, Offset)]
-findDestinationsFromZero offsets = M.toList $ findDest' 0 (noOffset 0) M.empty
-  where findDest' :: Int -> Offset -> M.Map Int Offset -> M.Map Int Offset
-        findDest' i current seen = if M.size seen == M.size offsets
-          then seen
-          else case M.lookup i offsets of
-                 Nothing -> seen
-                 Just os -> 
-                   let unseen = filter (\o -> not $ M.member (offsetOther o) seen) os
-                       newSeen = foldl' (\sn o -> M.insert (offsetOther o) (fromJust (combineOffsets current o)) sn) seen unseen 
-                   in foldl' (\sn o -> findDest' (offsetOther o) o sn) newSeen unseen
-
-findPathsFromZero :: [(Int, Int, Difference, Difference, Difference)] -> [(Int, Offset)]
-findPathsFromZero pairOffsets =
-  let offsets = mapOffsetsFromZero pairOffsets
-  in findDestinationsFromZero offsets
-
-
-combineDifferences :: Difference -> Difference -> Difference
-combineDifferences (Difference d1 f1 cOne1 _) (Difference d2 f2 _ cOther2) =
-  Difference (d1 + (f1 * d2)) (f2 * f1) cOne1 cOther2
---  else Difference (d1 + d2) f1 cOne1 cOther2
-  -- else if f2 == 1
-  --      then Difference (d1 + d2) f1 cOne1 cOther2
-  --      else Difference (d1 - d2) f1 cOne1 cOther2
-
-
-findXInitDiff :: [Difference] -> Maybe Difference
-findXInitDiff = L.find ((==X) . differenceCoordOne)
-
-findYInitDiff :: [Difference] -> Maybe Difference
-findYInitDiff = L.find ((==Y) . differenceCoordOne)
-
-findZInitDiff :: [Difference] -> Maybe Difference
-findZInitDiff = L.find ((==Z) . differenceCoordOne)
-
-findPair :: Difference -> [Difference] -> Maybe Difference
-findPair d ds = find (\other -> differenceCoordOther d == differenceCoordOne other) ds
-
-combineOffsets :: Offset -> Offset -> Maybe Offset
-combineOffsets (Offset _ dX1 dY1 dZ1) (Offset j dX2 dY2 dZ2) = 
-  let ds = [dX2, dY2, dZ2]
-  in do
-    x <- findPair dX1 ds
-    y <- findPair dY1 ds
-    z <- findPair dZ1 ds
-    let c1 = combineDifferences dX1 x
-    let c2 = combineDifferences dY1 y 
-    let c3 = combineDifferences dZ1 z
-    return (Offset j c1 c2 c3)
-
-combineAllOffsets :: [Offset] -> Maybe Offset
-combineAllOffsets [] = Nothing
-combineAllOffsets (first : rest) =
-  foldl' (\acc o -> case acc of 
-                      Nothing -> Nothing
-                      Just off -> combineOffsets off o) (Just first) rest
-
 dotVecs :: [Int] -> [Int] -> Int
 dotVecs xs ys = sum $ zipWith (*) xs ys
 
@@ -304,7 +182,7 @@ matTimesVec :: [[Int]] -> [Int] -> [Int]
 matTimesVec m v = map (\r -> dotVecs r v) m
 
 matTimesMat :: [[Int]] -> [[Int]] -> [[Int]]
-matTimesMat m1 m2 = map (matTimesVec m1) (L.transpose m2)
+matTimesMat m1 m2 = L.transpose $ map (matTimesVec m1) (L.transpose m2)
 
 addVectors :: [Int] -> [Int] -> [Int]
 addVectors = zipWith (+)
@@ -318,8 +196,8 @@ transformEnd :: Transform -> Int
 transformEnd (Transform _ e _ _) = e
 
 composeTransforms :: Transform -> Transform -> Transform
-composeTransforms (Transform start _ m1 v1) (Transform _ end m2 v2) = 
-  Transform start end (matTimesMat m1 m2) (addVectors (matTimesVec m1 v2) v1)
+composeTransforms (Transform _ end m2 v2) (Transform start _ m1 v1) = 
+  Transform start end (matTimesMat m2 m1) (addVectors (matTimesVec m2 v1) v2)
 
 scalarTimesVec :: Int -> [Int] -> [Int]
 scalarTimesVec i = map (*i)
@@ -353,11 +231,6 @@ inverse (Transform s e m v) =
   let matInv = inv m
   in (Transform e s matInv (scalarTimesVec (-1) (matTimesVec matInv v)))
 
-offsetsToZero :: [(Int, Int, Difference, Difference, Difference)] -> [(Int, Maybe Offset)]
-offsetsToZero pairOffsets =
-  let paths = findPaths pairOffsets
-  in map (\(i, os) -> (i, os >>= combineAllOffsets)) paths
-
 type Transforms = M.Map Int [Transform]
 
 mapTransforms :: [(Int, Int, Difference, Difference, Difference)] -> Transforms
@@ -371,7 +244,9 @@ composeAllTransforms :: [Transform] -> Maybe Transform
 composeAllTransforms [] = Nothing
 composeAllTransforms ts@(_ : _) = Just $ foldr1 composeTransforms ts
 
-transformsToZero :: [(Int, Int, Difference, Difference, Difference)] -> M.Map Int (Maybe Transform)
+type TransformsToZero = M.Map Int (Maybe Transform)
+
+transformsToZero :: [(Int, Int, Difference, Difference, Difference)] -> TransformsToZero
 transformsToZero pairOffsets = 
   let paths = findTransformPaths pairOffsets
   in M.fromList $ map (\(i, trs) -> (i, trs >>= composeAllTransforms)) paths
@@ -398,4 +273,21 @@ answer scns =
   let ts = transformsToZero $ allMatches scns
   in coordsAtZero scns ts
 
-part1 = (fmap (findTransformPaths . allMatches)) <$> input
+part1 :: IO (Either ParseError Int)
+part1 = (fmap (S.size . answer)) <$> input
+
+data ScannerCoord = ScannerCoord Int [Int] deriving Show
+
+scannerCoords :: TransformsToZero -> [[Int]]
+scannerCoords ts = map (\(_, tr) -> case tr of 
+                           Nothing -> [0, 0, 0]
+                           Just (Transform _ _ _ offset) -> offset) $ M.toList ts
+
+manhattanDistance :: [Int] -> [Int] -> Int
+manhattanDistance one other = sum $ zipWith (\a b -> abs (a - b)) one other
+
+maximumManhattanDistance :: [[Int]] -> Int
+maximumManhattanDistance = maximum . map (uncurry manhattanDistance) . chooseTwo
+
+part2 :: IO (Either ParseError Int)
+part2 = (fmap (maximumManhattanDistance . scannerCoords . transformsToZero . allMatches)) <$> input
