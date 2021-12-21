@@ -76,10 +76,7 @@ findMatches ds is js = filter (hasMatch is js) ds
  
 hasMatch :: [Int] -> [Int] -> Difference -> Bool
 hasMatch is js (Difference d _ _ _) = let diffed = map (\i -> i - d) is
-                                      in if length (diffed `L.intersect` js) >= 12
-                                         then --trace ("IS " ++ show is ++ " INTERSECTION " ++ show (diffed `L.intersect` js) ++ " D " ++ show d) $ True
-                                           True
-                                         else False
+                                      in length (diffed `L.intersect` js) >= 12
 
 differencesBetween :: [Int] -> [Int] -> [Int]
 differencesBetween is js = [i - j | i <- is, j <- js]

@@ -1,13 +1,11 @@
 module Day21 where
 
-import Debug.Trace
 import Data.Foldable
 import Text.Parsec.Char
 import Text.Parsec.Combinator
 import Text.ParserCombinators.Parsec 
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import qualified Data.Array as A
 import qualified Data.Map as M
 
 positiveInt :: GenParser Char st Int
@@ -70,22 +68,11 @@ moveWithRoll (Player pid pos score) roll =
 
 type Cache = M.Map Game WinState
 
-numberOfWins :: Player -> Player -> Target -> WinState
-numberOfWins p1@(Player pid1 _ _) (Player pid2 pos2 sc2) target = 
-  let playerWins i = let nextP1@(Player _ _ nextSc1) = moveWithRoll p1 i
-                     in if nextSc1 >= target then (M.fromList [(pid1, 1), (pid2, 0)])
-                        else let minScore = nextSc1 `min` sc2
-                                 nextP2 = Player pid2 pos2 (sc2 - minScore)
-                             in numberOfWins nextP2 nextP1 target
-      wins1 = playerWins 1
-      wins2 = playerWins 2
-      wins3 = playerWins 3
-  in M.unionWith (+) (M.unionWith (+) wins1 wins2) wins3
-
 combineWins :: WinState -> WinState -> WinState
 combineWins = M.unionWith (+)
 
--- possible rolls [3,4,5,4,5,6,5,6,7,4,5,6,5,6,7,6,7,8,5,6,7,6,7,8,7,8,9]
+possibleRolls :: [Int]
+possibleRolls = map sum [[i, j, k] | i <- [1..3], j <- [1..3], k <- [1..3]]
 
 numberOfWinsCached :: Int -> Cache -> Game -> (Cache, WinState)
 numberOfWinsCached target cache gs@(Game p1@(Player pid1 _ _) p2@(Player pid2 _ _)) = 
@@ -99,20 +86,13 @@ numberOfWinsCached target cache gs@(Game p1@(Player pid1 _ _) p2@(Player pid2 _ 
                then let winState = (M.fromList [(pid1, 1), (pid2, 0)])
                     in (M.insertWith combineWins (Game p2 nextP1) winState currCache, winState)
                else numberOfWinsCached target currCache (Game p2 nextP1)
-          (cache1, wins1) = playerWins 1 cache
-          (cache2, wins2) = playerWins 2 cache1
-          (cache3, wins3) = playerWins 3 cache2
-          finalWinState = M.unionWith (+) (M.unionWith (+) wins1 wins2) wins3
-          finalCache = M.insert gs finalWinState cache3
-      in --trace ("GAME STATE " ++ show gs ++ " FINAL WIN STATE " ++ show finalWinState ++ " FINAL CACHE " ++ show finalCache) 
-        (finalCache, finalWinState)
+      in let (finalCache, finalWins) = foldl' (\(chc, wins) i -> 
+                   let (newCache, newWins) = playerWins i chc
+                   in (newCache, combineWins wins newWins)) (cache, M.empty) possibleRolls
+         in (M.insert gs finalWins finalCache, finalWins)
 
---answer :: Game -> (Cache, WinState)
-answer gm@(Game p1 p2) = (0, numberOfWins p1 p2 10)
+answer :: Game -> (Cache, WinState)
+answer gm = numberOfWinsCached 21 M.empty gm
                         
---numberOfWinsCached M.empty gs
-
+part2 :: IO (Either ParseError WinState)
 part2 = (fmap (snd . answer)) <$> input 
-
---282764727234841883847269498675
---444356092776315
