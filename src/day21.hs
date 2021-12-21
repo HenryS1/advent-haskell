@@ -1,5 +1,6 @@
 module Day21 where
 
+import Debug.Trace
 import Data.Foldable
 import Text.Parsec.Char
 import Text.Parsec.Combinator
@@ -12,7 +13,7 @@ import qualified Data.Map as M
 positiveInt :: GenParser Char st Int
 positiveInt = read <$> many1 digit
 
-data Player = Player { playerPid :: Int, playerPos :: Int, playerScore :: Int } deriving Show
+data Player = Player { playerPid :: Int, playerPos :: Int, playerScore :: Int } deriving (Eq, Ord, Show)
 
 parsePlayer :: GenParser Char st Player
 parsePlayer = do
@@ -22,7 +23,7 @@ parsePlayer = do
   pos <- positiveInt
   return (Player pid pos 0)
 
-data Game = Game Player Player deriving Show
+data Game = Game Player Player deriving (Eq, Ord, Show)
 
 parseGame :: GenParser Char st Game
 parseGame = do
@@ -60,25 +61,58 @@ part1 = (fmap (play [1..])) <$> input
 
 type Target = Int
 
-type WinState = M.Map Int Int
+type WinState = M.Map Int Integer
 
 moveWithRoll :: Player -> Int -> Player
 moveWithRoll (Player pid pos score) roll = 
   let finalPos = incMod pos roll
   in Player pid finalPos (score + finalPos)
 
-data Turn = P1 | P2 deriving Show
+type Cache = M.Map Game WinState
 
 numberOfWins :: Player -> Player -> Target -> WinState
 numberOfWins p1@(Player pid1 _ _) (Player pid2 pos2 sc2) target = 
-  let playerWins i = let (Player _ nextPos1 nextSc1) = moveWithRoll p1 i
-                     in if nextSc1 > target then (M.fromList [(pid1, 1), (pid2, 0)])
+  let playerWins i = let nextP1@(Player _ _ nextSc1) = moveWithRoll p1 i
+                     in if nextSc1 >= target then (M.fromList [(pid1, 1), (pid2, 0)])
                         else let minScore = nextSc1 `min` sc2
-                                 finalP1 = Player pid1 nextPos1 (nextSc1 - minScore)
-                                 finalP2 = Player pid2 pos2 (sc2 - minScore)
-                                 nextTarget = target - minScore
-                             in numberOfWins finalP2 finalP1 nextTarget
+                                 nextP2 = Player pid2 pos2 (sc2 - minScore)
+                             in numberOfWins nextP2 nextP1 target
       wins1 = playerWins 1
       wins2 = playerWins 2
       wins3 = playerWins 3
   in M.unionWith (+) (M.unionWith (+) wins1 wins2) wins3
+
+combineWins :: WinState -> WinState -> WinState
+combineWins = M.unionWith (+)
+
+-- possible rolls [3,4,5,4,5,6,5,6,7,4,5,6,5,6,7,6,7,8,5,6,7,6,7,8,7,8,9]
+
+numberOfWinsCached :: Int -> Cache -> Game -> (Cache, WinState)
+numberOfWinsCached target cache gs@(Game p1@(Player pid1 _ _) p2@(Player pid2 _ _)) = 
+  case M.lookup gs cache of
+    Just wins -> (cache, wins)
+    Nothing ->
+      let playerWins :: Int -> Cache -> (Cache, WinState)
+          playerWins i currCache = 
+            let nextP1@(Player _ _ nextSc1) = moveWithRoll p1 i
+            in if nextSc1 >= target 
+               then let winState = (M.fromList [(pid1, 1), (pid2, 0)])
+                    in (M.insertWith combineWins (Game p2 nextP1) winState currCache, winState)
+               else numberOfWinsCached target currCache (Game p2 nextP1)
+          (cache1, wins1) = playerWins 1 cache
+          (cache2, wins2) = playerWins 2 cache1
+          (cache3, wins3) = playerWins 3 cache2
+          finalWinState = M.unionWith (+) (M.unionWith (+) wins1 wins2) wins3
+          finalCache = M.insert gs finalWinState cache3
+      in --trace ("GAME STATE " ++ show gs ++ " FINAL WIN STATE " ++ show finalWinState ++ " FINAL CACHE " ++ show finalCache) 
+        (finalCache, finalWinState)
+
+--answer :: Game -> (Cache, WinState)
+answer gm@(Game p1 p2) = (0, numberOfWins p1 p2 10)
+                        
+--numberOfWinsCached M.empty gs
+
+part2 = (fmap (snd . answer)) <$> input 
+
+--282764727234841883847269498675
+--444356092776315
