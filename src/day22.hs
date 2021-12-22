@@ -1,4 +1,4 @@
-module Day22 where
+module Main where
 
 import Debug.Trace
 import Data.Maybe
@@ -194,9 +194,9 @@ normaliseCuboid (Cuboid sw x y z) = do
 
 --answer1 :: [Cuboid] -> Int
 answer1 cs = let initCuboids = catMaybes $ map normaliseCuboid cs
-                 tr = initialTree initCuboids
+                 tr = initialTree cs
              in --trace ("TREE " ++ show tr) $
-                onCount $ foldl' applyUpdate tr initCuboids 
+                onCount $ foldl' applyUpdate tr cs
 
 type Grid = S.Set (Int, Int, Int)
 
@@ -212,4 +212,8 @@ answer cs = let initCuboids = catMaybes $ map normaliseCuboid cs
                 finalGrid = foldl' updateGrid S.empty initCuboids
             in S.size finalGrid
 
-part1 = (fmap answer) <$> input
+
+
+part1 = (fmap answer1) <$> input
+
+main = part1 >>= (putStrLn . show)
