@@ -8,6 +8,8 @@ import Text.Parsec.Combinator
 import Text.ParserCombinators.Parsec 
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import qualified Data.Array as A
+import qualified Data.Set as S
 import qualified Data.Map as M
 
 positiveInt :: GenParser Char st Int
@@ -190,10 +192,24 @@ normaliseCuboid (Cuboid sw x y z) = do
   zN <- normaliseBounds z
   return $ Cuboid sw xN yN zN
 
-answer1 :: [Cuboid] -> Int
+--answer1 :: [Cuboid] -> Int
 answer1 cs = let initCuboids = catMaybes $ map normaliseCuboid cs
                  tr = initialTree initCuboids
              in --trace ("TREE " ++ show tr) $
                 onCount $ foldl' applyUpdate tr initCuboids 
 
-part1 = (fmap answer1) <$> input
+type Grid = S.Set (Int, Int, Int)
+
+updateGrid :: Grid -> Cuboid -> Grid
+updateGrid gr (Cuboid sw (Bounds xMn xMx) (Bounds yMn yMx) (Bounds zMn zMx)) =
+  case sw of 
+    On -> foldl' (\g c -> S.insert c g) gr [(x, y, z)| x <- [xMn..xMx], y <- [yMn..yMx], z <- [zMn..zMx]]
+    Off -> foldl' (\g c -> S.delete c g) gr [(x, y, z)| x <- [xMn..xMx], y <- [yMn..yMx], z <- [zMn..zMx]]
+    NoOp -> gr
+
+answer :: [Cuboid] -> Int
+answer cs = let initCuboids = catMaybes $ map normaliseCuboid cs
+                finalGrid = foldl' updateGrid S.empty initCuboids
+            in S.size finalGrid
+
+part1 = (fmap answer) <$> input
