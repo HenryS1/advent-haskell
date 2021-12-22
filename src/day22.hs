@@ -1,5 +1,6 @@
 module Day22 where
 
+import Debug.Trace
 import Data.Maybe
 import Data.Foldable
 import Text.Parsec.Char
@@ -67,7 +68,7 @@ data Tree = Tree {
   xMnyMxzMx :: Maybe Tree,
   xMxyMxzMx :: Maybe Tree,
   xMxyMnzMx :: Maybe Tree
-}
+} deriving Show
 
 makeTree :: Switch -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Tree
 makeTree sw xMn xMx yMn yMx zMn zMx on = 
@@ -81,13 +82,18 @@ combine On Off = NoOp
 combine On On = On
 combine Off Off = Off
 combine Off On = NoOp
+combine NoOp other = other
+combine other NoOp = other
 
-updatedOnCount :: Switch -> Int -> Int -> Int -> Int
-updatedOnCount Off _ _ _ = 0
-updatedOnCount On xDiff yDiff zDiff = xDiff * yDiff * zDiff
+updatedOnCount :: Switch -> Int -> Int -> Int -> Int -> Int
+updatedOnCount Off _ _ _ _ = 0
+updatedOnCount On xDiff yDiff zDiff _ = --trace ("xDiff " ++ show xDiff ++ " yDiff " ++ show yDiff ++ " zDiff " ++ show zDiff) $ 
+  xDiff * yDiff * zDiff
+updatedOnCount NoOp _ _ _ oldOnCount = oldOnCount
 
 update :: Switch -> Int -> Int -> Int -> Int -> Int -> Int -> Tree -> Tree
 update sw xMn xMx yMn yMx zMn zMx tree =
+--  trace ("update " ++ show sw ++ " xMn " ++ show xMn ++ " xMx " ++ show xMx ++ " yMn " ++ show yMn ++ " yMx " ++ show yMx ++ " zMn " ++ show zMn ++ " zMx " ++ show zMx) $
   let xDiff = xMx - xMn
       yDiff = yMx - yMn
       zDiff = zMx - zMn
@@ -100,7 +106,7 @@ update sw xMn xMx yMn yMx zMn zMx tree =
                 && yMax tree == yMx
                 && zMin tree == zMn
                 && zMax tree == zMx
-             then (tree { outstanding = combined, onCount = updatedOnCount sw xDiff yDiff zDiff }) 
+             then (tree { outstanding = combined, onCount = updatedOnCount sw xDiff yDiff zDiff (onCount tree)}) 
              else let xMid = (xMin tree + xMax tree) `div` 2
                       yMid = (yMin tree + yMax tree) `div` 2
                       zMid = (zMin tree + zMax tree) `div` 2
@@ -138,7 +144,8 @@ update sw xMn xMx yMn yMx zMn zMx tree =
                       newxMxyMnzMx = if xMx >= xMid && yMn < yMid && zMx >= zMid
                         then update sw (xMid `max` xMn) xMx yMn (yMid `min` yMx) (zMid `max` zMn) zMx $ updateDefaults (outstanding tree) defaultxMxyMnzMx
                         else updateDefaults (outstanding tree) defaultxMxyMnzMx
-                  in (tree 
+                  in --trace (show (onCount newxMnyMnzMn) ++ " " ++ show (onCount newxMnyMxzMn) ++ " " ++ show (onCount newxMxyMxzMn) ++ " " ++ show (onCount newxMxyMnzMn) ++ " " ++ show (onCount newxMnyMnzMx) ++ " " ++ show (onCount newxMnyMxzMx) ++ " " ++ show (onCount newxMxyMxzMx) ++ " " ++ show (onCount newxMxyMnzMx)) $
+    (tree 
                       {
                         onCount = (onCount newxMnyMnzMn) + (onCount newxMnyMxzMn) + (onCount newxMxyMxzMn) + (onCount newxMxyMnzMn) 
                                   + (onCount newxMnyMnzMx) + (onCount newxMnyMxzMx) + (onCount newxMxyMxzMx) + (onCount newxMxyMnzMx),
@@ -150,6 +157,43 @@ update sw xMn xMx yMn yMx zMn zMx tree =
                         xMnyMnzMx = Just newxMnyMnzMx,
                         xMnyMxzMx = Just newxMnyMxzMx,
                         xMxyMxzMx = Just newxMxyMxzMx,
-                        xMxyMnzMx = Just newxMxyMnzMx
+                        xMxyMnzMx = Just newxMxyMnzMx,
+                        outstanding = NoOp
                       }
                      )
+
+applyUpdate :: Tree -> Cuboid -> Tree
+applyUpdate tr cb@(Cuboid sw (Bounds xMn xMx) (Bounds yMn yMx) (Bounds zMn zMx)) = 
+--  trace ("CUBOID " ++ show cb) $
+  update sw xMn (xMx + 1)  yMn (yMx + 1) zMn (zMx + 1) tr
+
+enclosingBound :: Bounds -> Bounds -> Bounds
+enclosingBound (Bounds mn1 mx1) (Bounds mn2 mx2) = Bounds (mn1 `min` mn2) (mx1 `max` mx2)
+
+enclosingCuboids :: Cuboid -> Cuboid -> Cuboid
+enclosingCuboids (Cuboid sw x1 y1 z1) (Cuboid _ x2 y2 z2) = 
+  Cuboid sw (enclosingBound x1 x2) (enclosingBound y1 y2) (enclosingBound z1 z2)
+
+initialTree :: [Cuboid] -> Tree
+initialTree cs = let (Cuboid _ (Bounds xMn xMx) (Bounds yMn yMx) (Bounds zMn zMx)) = foldr1 enclosingCuboids cs
+                 in makeTree NoOp xMn (xMx + 1) yMn (yMx + 1) zMn (zMx + 1) 0
+
+normaliseBounds :: Bounds -> Maybe Bounds
+normaliseBounds (Bounds mn mx) = if (mn <= -50 && mx >= -50) || (mn <= 50 && mx >= 50) || (mn >= -50 && mx <= 50)
+  then Just (Bounds ((mn `max` (-50)) `min` 50) ((mx `min` 50) `max` (-50)))
+  else Nothing
+
+normaliseCuboid :: Cuboid -> Maybe Cuboid
+normaliseCuboid (Cuboid sw x y z) = do
+  xN <- normaliseBounds x
+  yN <- normaliseBounds y
+  zN <- normaliseBounds z
+  return $ Cuboid sw xN yN zN
+
+answer1 :: [Cuboid] -> Int
+answer1 cs = let initCuboids = catMaybes $ map normaliseCuboid cs
+                 tr = initialTree initCuboids
+             in --trace ("TREE " ++ show tr) $
+                onCount $ foldl' applyUpdate tr initCuboids 
+
+part1 = (fmap answer1) <$> input
