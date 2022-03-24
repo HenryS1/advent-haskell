@@ -1,16 +1,11 @@
 module Day22 where
 
-import Debug.Trace
-import Data.Maybe
-import Data.Foldable
 import Text.Parsec.Char
 import Text.Parsec.Combinator
 import Text.ParserCombinators.Parsec 
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import qualified Data.Array as A
-import qualified Data.Set as S
-import qualified Data.Map as M
+import Data.Maybe
 
 positiveInt :: GenParser Char st Int
 positiveInt = read <$> many1 digit
@@ -48,11 +43,13 @@ parseCuboid = do
 parseCuboids :: GenParser Char st [Cuboid]
 parseCuboids = many1 (parseCuboid <* endOfLine)
 
+switch :: Cuboid -> Switch 
+switch (Cuboid sw _ _ _) = sw
+
 input :: IO (Either ParseError [Cuboid])
 input = do
   fileContent <- TIO.readFile "/Users/henrysteere/wip/haskell/advent2021/src/day22.input"
   return $ parse parseCuboids "day22.input" (T.unpack fileContent)
-
 
 intersectBounds :: Bounds -> Bounds -> Maybe Bounds
 intersectBounds b1@(Bounds mn1 mx1) b2@(Bounds mn2 mx2) = 
@@ -61,10 +58,8 @@ intersectBounds b1@(Bounds mn1 mx1) b2@(Bounds mn2 mx2) =
   else if mx1 >= mx2 
        then Just b2
        else if mx1 < mn2 
-            then Nothing
+            then Nothing 
             else Just (Bounds mn2 mx1)
-
-
 
 intersectCuboids :: Cuboid -> Cuboid -> Maybe Cuboid
 intersectCuboids (Cuboid _ x1 y1 z1) (Cuboid sw x2 y2 z2) = do
@@ -74,6 +69,24 @@ intersectCuboids (Cuboid _ x1 y1 z1) (Cuboid sw x2 y2 z2) = do
   return (Cuboid sw x y z)
 
 type Intersection = Cuboid
+
+findIntersection :: Cuboid -> Cuboid -> [Cuboid]
+findIntersection c1 c2 = let inter = intersectCuboids c1 c2
+                             in case inter of 
+                                  Nothing -> [c2]
+                                  Just i -> splitCuboid c2 i
+
+updateCuboids :: Cuboid -> [Cuboid] -> [Cuboid]
+updateCuboids c@(Cuboid On _ _ _) cs = c : (cs >>= (findIntersection c))
+updateCuboids c@(Cuboid Off _ _ _) cs = cs >>= (findIntersection c)
+
+intersectAll :: [Cuboid] -> [Cuboid]
+intersectAll [] = []
+intersectAll (c : cs) = let rest = (intersectAll cs)
+                           in case (rest, switch c) of 
+                                ([], On) -> [c]
+                                ([], Off) -> []
+                                (inters, _) -> updateCuboids c inters
 
 sameBlock :: Cuboid -> Cuboid -> Bool
 sameBlock (Cuboid _ x1 y1 z1) (Cuboid _ x2 y2 z2) =
@@ -96,43 +109,19 @@ splitCuboid c1@(Cuboid sw (Bounds xMn1 xMx1) (Bounds yMn1 yMx1) (Bounds zMn1 zMx
    Cuboid sw (Bounds xMn2 xMx2) (Bounds yMn2 yMx2) (Bounds zMn1 (zMn2 - 1)),
    Cuboid sw (Bounds xMn2 xMx2) (Bounds yMn2 yMx2) (Bounds (zMx2 + 1) zMx1)]
 
-combineCuboids :: Cuboid -> Cuboid -> ([Cuboid], [Cuboid])
-combineCuboids c1 c2 = 
-  let intersection = intersectCuboids c1 c2
-  in case intersection of
-    Nothing -> ([c1], [c2])
-    Just intersct ->
-      let old = splitCuboid c1 intersct
-          new = splitCuboid c2 intersct
-      in (old, intersct : new)
-
-isOff :: Cuboid -> Bool
-isOff (Cuboid On _ _ _) = False
-isOff (Cuboid Off _ _ _) = True
-
-
-addNewCuboid :: Cuboid -> [Cuboid] -> [Cuboid]
-addNewCuboid c [] = [c]
-addNewCuboid c1 cs = 
-  let (old, new) = unzip $ map (combineCuboids c1) cs
-  in filter (not . isOff) $ (concat old) ++ concat new
---  in filter (not . isOff) $ (old ++ new)
-
-volume :: Cuboid -> Int
+volume :: Cuboid -> Integer
 volume (Cuboid _ (Bounds xMn xMx) (Bounds yMn yMx) (Bounds zMn zMx)) = 
-  (xMx - xMn + 1) * (yMx - yMn + 1) * (zMx - zMn + 1)
+  fromIntegral $ (xMx - xMn + 1) * (yMx - yMn + 1) * (zMx - zMn + 1)
 
-countOn :: [Cuboid] -> Int
-countOn = sum . map volume . filter (not . isOff)
+volumeOn :: [Cuboid] -> Integer
+volumeOn = sum . map volume . intersectAll . reverse
 
-combineAll :: [Cuboid] -> [Cuboid]
-combineAll cuboids = combine' cuboids []
-  where combine' [] acc = acc
-        combine' (c : cs) acc = combine' cs (addNewCuboid c acc)
+initializationArea :: Cuboid 
+initializationArea = Cuboid On (Bounds (-50) 50) (Bounds (-50) 50) (Bounds (-50) 50)
 
---answer :: [Cuboid] -> [Cuboid]
-answer = length . combineAll
+part1 :: IO (Either ParseError Integer)
+part1 = fmap (volumeOn . catMaybes . map (intersectCuboids initializationArea)) 
+  <$> input
 
-part2 = (fmap answer) <$> input
-
---main = part1 >>= (putStrLn . show)
+part2 :: IO (Either ParseError Integer)
+part2 = fmap volumeOn <$> input
