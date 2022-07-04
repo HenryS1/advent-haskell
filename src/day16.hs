@@ -4,30 +4,28 @@ import Data.Foldable
 import Text.Parsec.Char
 import Text.Parsec.Combinator
 import Text.ParserCombinators.Parsec 
+import Control.Monad
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Data.Char as C
 
 bits :: GenParser Char st String
-bits = do
-  c <- hexDigit
-  return $ case c of
-    '0' -> "0000"
-    '1' -> "0001"
-    '2' -> "0010"
-    '3' -> "0011"
-    '4' -> "0100"
-    '5' -> "0101"
-    '6' -> "0110"
-    '7' -> "0111"
-    '8' -> "1000"
-    '9' -> "1001"
-    'A' -> "1010"
-    'B' -> "1011"
-    'C' -> "1100"
-    'D' -> "1101"
-    'E' -> "1110"
-    'F' -> "1111"
+bits = (char '0' >> pure "0000")
+    <|> (char '1' >> pure "0001")
+    <|> (char '2' >> pure "0010")
+    <|> (char '3' >> pure "0011")
+    <|> (char '4' >> pure "0100")
+    <|> (char '5' >> pure "0101")
+    <|> (char '6' >> pure "0110")
+    <|> (char '7' >> pure "0111")
+    <|> (char '8' >> pure "1000")
+    <|> (char '9' >> pure "1001")
+    <|> (char 'A' >> pure "1010")
+    <|> (char 'B' >> pure "1011")
+    <|> (char 'C' >> pure "1100")
+    <|> (char 'D' >> pure "1101")
+    <|> (char 'E' >> pure "1110")
+    <|> (char 'F' >> pure "1111")
 
 allBits :: GenParser Char st String
 allBits = concat <$> many1 bits
@@ -41,7 +39,16 @@ bit = oneOf ['0', '1']
 intBits :: Int -> GenParser Char st Int
 intBits n = bitsToInt <$> count n bit 
 
-data Packet = Literal Int Int | Operator Int Int [Packet] deriving Show
+data OpType = Sum [Packet]
+  | Product [Packet]
+  | Minimum [Packet]
+  | Maximum [Packet]
+  | Gt Packet Packet
+  | Lt Packet Packet
+  | Equal Packet Packet deriving Show
+
+data Packet = Literal Int Int 
+  | Operator Int OpType deriving Show
 
 version :: GenParser Char st Int
 version = intBits 3
@@ -64,6 +71,25 @@ literal = do
 packet :: GenParser Char st Packet
 packet = try literal <|> operator
 
+parseOpType :: Int -> [Packet] -> GenParser Char st OpType
+parseOpType tId ps = (guard (tId == 0) >> pure (Sum ps))
+  <|> (guard (tId == 1) >> pure (Product ps))
+  <|> (guard (tId == 2) >> pure (Minimum ps))
+  <|> (guard (tId == 3) >> pure (Maximum ps))
+  <|> (guard (tId == 5) >>
+        do let [one, other] = ps
+           return (Gt one other)
+            <|> fail "Invalid number of arguments for less than operator")
+  <|> (guard (tId == 6) >>
+        do let [one, other] = ps
+           return (Lt one other) 
+             <|> fail "Invalid number of arguments for greater than operator")
+  <|> (guard (tId == 7) >>
+        do let [one, other] = ps
+           return (Equal one other) 
+             <|> fail "Invalid number of arguments for equal operator")
+  <|> fail ("Unknown operator id " ++ show tId)
+
 modeZero :: Int -> Int -> GenParser Char st Packet
 modeZero v tId = do
   totalLength <- intBits 15
@@ -72,22 +98,21 @@ modeZero v tId = do
   setInput packetBits
   subPackets <- many1 packet
   setInput remaining
-  return (Operator v tId subPackets)
+  opType <- parseOpType tId subPackets
+  return (Operator v opType)
 
 modeOne :: Int -> Int -> GenParser Char st Packet
 modeOne v tId = do
   numSubPackets <- intBits 11
   subPackets <- count numSubPackets packet
-  return (Operator v tId subPackets)
+  opType <- parseOpType tId subPackets
+  return (Operator v opType)
 
 operator :: GenParser Char st Packet
 operator = do
   v <- version
   typeId <- intBits 3
-  lType <- bit
-  case lType of
-    '0' -> modeZero v typeId
-    '1' -> modeOne v typeId
+  (char '0' >> modeZero v typeId) <|> (char '1' >> modeOne v typeId)
 
 packetFromHex :: GenParser Char st Packet
 packetFromHex = do
@@ -102,26 +127,33 @@ input = do
 
 versionSum :: Packet -> Int
 versionSum (Literal v _) = v
-versionSum (Operator v _ ps) = v + sum (map versionSum ps)
+versionSum (Operator v opType) = v + opTypeVersionSum opType
+  where opTypeVersionSum (Sum ps) = sum $ map versionSum ps
+        opTypeVersionSum (Product ps) = sum $ map versionSum ps
+        opTypeVersionSum (Minimum ps) = sum $ map versionSum ps
+        opTypeVersionSum (Maximum ps) = sum $ map versionSum ps
+        opTypeVersionSum (Gt one other) = versionSum one + versionSum other
+        opTypeVersionSum (Lt one other) = versionSum one + versionSum other
+        opTypeVersionSum (Equal one other) = versionSum one + versionSum other
 
 part1 :: IO (Either ParseError Int)
 part1 = (fmap versionSum) <$> input
 
 packetValue :: Packet -> Int
 packetValue (Literal _ v) = v
-packetValue (Operator _ 0 ps) = sum $ map packetValue ps
-packetValue (Operator _ 1 ps) = product $ map packetValue ps
-packetValue (Operator _ 2 ps) = minimum $ map packetValue ps
-packetValue (Operator _ 3 ps) = maximum $ map packetValue ps
-packetValue (Operator _ 5 [one, other]) = let v1 = packetValue one
+packetValue (Operator _ (Sum ps)) = sum $ map packetValue ps
+packetValue (Operator _ (Product ps)) = product $ map packetValue ps
+packetValue (Operator _ (Minimum ps)) = minimum $ map packetValue ps
+packetValue (Operator _ (Maximum ps)) = maximum $ map packetValue ps
+packetValue (Operator _ (Gt one other)) = let v1 = packetValue one
                                               v2 = packetValue other
                                           in if v1 > v2 then 1 else 0
-packetValue (Operator _ 6 [one, other]) = let v1 = packetValue one
+packetValue (Operator _ (Lt one other)) = let v1 = packetValue one
                                               v2 = packetValue other
                                           in if v1 < v2 then 1 else 0
-packetValue (Operator _ 7 [one, other]) = let v1 = packetValue one
-                                              v2 = packetValue other
-                                          in if v1 == v2 then 1 else 0
+packetValue (Operator _ (Equal one other)) = let v1 = packetValue one
+                                                 v2 = packetValue other
+                                             in if v1 == v2 then 1 else 0
 
 part2 :: IO (Either ParseError Int)
 part2 = (fmap packetValue) <$> input
