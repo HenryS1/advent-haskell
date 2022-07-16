@@ -8,22 +8,23 @@ import Text.ParserCombinators.Parsec
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 
-positiveInt :: GenParser Char st Int
-positiveInt = read <$> many1 digit
 
 data Tree = Node Int Tree Tree
   | Leaf Int  
-
-treeHeight :: Tree -> Int
-treeHeight (Node h _ _) = h
-treeHeight (Leaf _) = 0
 
 instance Show Tree where
   show (Leaf v) = show v
   show (Node _ left right) = '[' : show left ++ ',' : show right ++ "]"
 
+int :: GenParser Char st Int
+int = read <$> many1 digit
+
+treeHeight :: Tree -> Int
+treeHeight (Node h _ _) = h
+treeHeight (Leaf _) = 0
+
 parseLeaf :: GenParser Char st Tree
-parseLeaf = Leaf <$> positiveInt
+parseLeaf = Leaf <$> int
 
 parseNode :: GenParser Char st Tree
 parseNode = do
