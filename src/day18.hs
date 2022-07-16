@@ -11,16 +11,12 @@ import qualified Data.Text.IO as TIO
 positiveInt :: GenParser Char st Int
 positiveInt = read <$> many1 digit
 
-data Tree = Node { nodeHeight :: Int, nodeLeft :: Tree, nodeRight :: Tree } 
-  | Leaf {leafValue :: Int } 
+data Tree = Node Int Tree Tree
+  | Leaf Int  
 
 treeHeight :: Tree -> Int
 treeHeight (Node h _ _) = h
 treeHeight (Leaf _) = 0
-
-subtreeHeights :: Tree -> Maybe (Int, Int)
-subtreeHeights (Leaf _) = Nothing
-subtreeHeights (Node _ l r) = Just (treeHeight l, treeHeight r)
 
 instance Show Tree where
   show (Leaf v) = show v
