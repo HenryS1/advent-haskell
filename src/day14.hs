@@ -46,11 +46,10 @@ countPairs [] = M.empty
 countPairs [_] = M.empty
 countPairs (c : tl@(d : _)) = M.insertWith (+) [c, d] 1 $ countPairs tl
 
-
 applySubstitutions :: PairCounts -> Rules -> PairCounts
 applySubstitutions pcs rs = M.foldrWithKey (\pr@[a, b] cnt acc -> 
                                              case M.lookup pr rs of
-                                               Nothing -> M.insertWith (+) pr 1 acc
+                                               Nothing -> M.insertWith (+) pr cnt acc
                                                Just repl ->
                                                  M.insertWith (+) [a,repl] cnt $ 
                                                  M.insertWith (+) [repl, b] cnt acc) M.empty pcs
