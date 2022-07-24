@@ -11,17 +11,18 @@ import qualified Data.Set as S
 positiveInt :: GenParser Char st Int
 positiveInt = read <$> many1 digit
 
-parseRule :: GenParser Char st (String, Char)
+parseRule :: GenParser Char st ((Char, Char), Char)
 parseRule = do
-  hd <- many1 letter
+  pairFirst <- letter
+  pairSecond <- letter
   _ <- string " -> "
   replacement <- letter
-  return (hd, replacement)
+  return ((pairFirst, pairSecond), replacement)
 
-parseRules :: GenParser Char st [(String, Char)]
+parseRules :: GenParser Char st [((Char, Char), Char)]
 parseRules = many1 (parseRule <* endOfLine)
 
-data Input = Input String (M.Map String Char) deriving Show
+data Input = Input String (M.Map (Char, Char) Char) deriving Show
 
 parseInput :: GenParser Char st Input
 parseInput = do
@@ -36,33 +37,33 @@ input = do
   return $ parse parseInput "day14.input" (T.unpack fileContent)
 
 type Polymer = String
-type Rules = M.Map String Char
-type PairCounts = M.Map String Integer
+type Rules = M.Map (Char, Char) Char
+type PairCounts = M.Map (Char, Char) Integer
 type Pair = String
 type Cache = M.Map (String, Int) PairCounts
 
 countPairs :: Polymer -> PairCounts
 countPairs [] = M.empty
 countPairs [_] = M.empty
-countPairs (c : tl@(d : _)) = M.insertWith (+) [c, d] 1 $ countPairs tl
+countPairs (c : tl@(d : _)) = M.insertWith (+) (c, d) 1 $ countPairs tl
 
 applySubstitutions :: PairCounts -> Rules -> PairCounts
-applySubstitutions pcs rs = M.foldrWithKey (\pr@[a, b] cnt acc -> 
+applySubstitutions pcs rs = M.foldrWithKey (\pr@(a, b) cnt acc -> 
                                              case M.lookup pr rs of
                                                Nothing -> M.insertWith (+) pr cnt acc
                                                Just repl ->
-                                                 M.insertWith (+) [a,repl] cnt $ 
-                                                 M.insertWith (+) [repl, b] cnt acc) M.empty pcs
+                                                 M.insertWith (+) (a, repl) cnt $ 
+                                                 M.insertWith (+) (repl, b) cnt acc) M.empty pcs
 
 type Element = Char
 type First = Char
 type Last = Char
 
 initElementCount :: Char -> PairCounts -> Integer
-initElementCount c = M.foldrWithKey (\[a,_] cnt acc -> if a == c then acc + cnt else acc) 0
+initElementCount c = M.foldrWithKey (\(a, _) cnt acc -> if a == c then acc + cnt else acc) 0
 
 lstElementCount :: Char -> PairCounts -> Integer
-lstElementCount c = M.foldrWithKey (\[_, b] cnt acc -> if b == c then acc + cnt else acc) 0
+lstElementCount c = M.foldrWithKey (\(_, b) cnt acc -> if b == c then acc + cnt else acc) 0
 
 elementCount :: First -> Last -> PairCounts -> Char -> Integer
 elementCount f l pcs c = let initCnt = initElementCount c pcs
@@ -76,7 +77,7 @@ applyToInput :: Int -> Input -> PairCounts
 applyToInput i (Input p rs) = applyRepeatedly rs i (countPairs p)
 
 elements :: PairCounts -> [Char]
-elements pcs = S.toList $ S.fromList $ concat $ M.keys pcs
+elements pcs = S.toList $ S.fromList $ concat $ map (\(c1, c2) -> [c1, c2]) $ M.keys pcs
 
 answer :: Int -> Input -> Integer
 answer i inp@(Input p _) = let pcs = applyToInput i inp
