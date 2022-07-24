@@ -10,18 +10,14 @@ import qualified Data.Text.IO as TIO
 
 
 data Tree = Node Int Tree Tree
-  | Leaf Int  
+  | Leaf Int deriving Show
 
-instance Show Tree where
-  show (Leaf v) = show v
-  show (Node _ left right) = '[' : show left ++ ',' : show right ++ "]"
+-- instance Show Tree where
+--   show (Leaf v) = show v
+--   show (Node _ left right) = '[' : show left ++ ',' : show right ++ "]"
 
-int :: GenParser Char st Int
-int = read <$> many1 digit
-
-treeHeight :: Tree -> Int
-treeHeight (Node h _ _) = h
-treeHeight (Leaf _) = 0
+parseTree :: GenParser Char st Tree
+parseTree = parseLeaf <|> parseNode
 
 parseLeaf :: GenParser Char st Tree
 parseLeaf = Leaf <$> int
@@ -35,8 +31,12 @@ parseNode = do
   _ <- char ']'
   return (Node (1 + (treeHeight left `max` treeHeight right)) left right)
 
-parseTree :: GenParser Char st Tree
-parseTree = parseLeaf <|> parseNode
+int :: GenParser Char st Int
+int = read <$> many1 digit
+
+treeHeight :: Tree -> Int
+treeHeight (Node h _ _) = h
+treeHeight (Leaf _) = 0
 
 parseTrees :: GenParser Char st [Tree]
 parseTrees = many1 (parseTree <* endOfLine)
@@ -89,12 +89,11 @@ split l@(Leaf v) = if v >= 10
           then let (d, r) = v `divMod` 2
           in ((Node 1 (Leaf d) (Leaf (d + r))), True)
           else (l, False)
-split n@(Node _ l r) = case split l of
-  (_, False) -> case split r of
-    (_, False) -> (n, False)
-    (newR, True) -> (Node (1 + (treeHeight l `max` treeHeight newR)) l newR, True)
-  (newL, True) -> (Node (1 + (treeHeight newL `max` treeHeight r)) newL r, True)
-
+split n@(Node _ l r) = case (split l, split r) of
+  ((_, False), (_, False)) -> (n, False)
+  ((newL, True), _) -> (Node (1 + (treeHeight newL `max` treeHeight r)) newL r, True)
+  (_, (newR, True)) -> (Node (1 + (treeHeight l `max` treeHeight newR)) l newR, True)
+ 
 reduce :: Tree -> Either SnailError Tree
 reduce tr = case explode tr of
   Left err -> Left err
