@@ -10,11 +10,11 @@ import qualified Data.Text.IO as TIO
 
 
 data Tree = Node Int Tree Tree
-  | Leaf Int deriving Show
+  | Leaf Int 
 
--- instance Show Tree where
---   show (Leaf v) = show v
---   show (Node _ left right) = '[' : show left ++ ',' : show right ++ "]"
+instance Show Tree where
+  show (Leaf v) = show v
+  show (Node _ left right) = '[' : show left ++ ',' : show right ++ "]"
 
 parseTree :: GenParser Char st Tree
 parseTree = parseLeaf <|> parseNode
@@ -66,23 +66,20 @@ explode tr = (\(t, mb) -> (t, isJust mb)) <$> explode' 4 tr
         explode' 0 n@(Node _ _ _) = Left (ExplodeNonPair n)
         explode' i n@(Node h l r) = if h <= i 
           then Right (n, Nothing)
-          else case explode' (i - 1) l of
-                 err@(Left _) -> err
-                 Right (newL, Just vs@(v1, v2)) ->
+          else case (explode' (i - 1) l, explode' (i - 1) r) of
+                 (err@(Left _), _) -> err
+                 (Right (newL, Just vs@(v1, v2)), _) ->
                    if v2 > 0 then
                      let newR = addToLeft v2 r
                      in Right (Node (1 + (treeHeight newL `max` treeHeight newR)) newL newR, Just (v1, 0))
                    else Right (Node (1 + (treeHeight newL `max` treeHeight r)) newL r, Just vs)
-                 Right (_, Nothing) -> 
-                   case explode' (i - 1) r of
-                     err@(Left _) -> err
-                     Right (_, Nothing) -> Left (NothingToExplode r)
-                     Right (newR, Just vs@(v1, v2)) -> 
-                       if v1 > 0 then 
-                         let newL = addToRight v1 l
-                         in Right (Node (1 + (treeHeight newL `max` treeHeight newR)) newL newR, Just (0, v2))
-                       else Right (Node (1 + (treeHeight l `max` treeHeight newR)) l newR, Just vs)
-
+                 (Right (_, Nothing), err@(Left _)) -> err
+                 (_, Right (_, Nothing)) -> Left (NothingToExplode r)
+                 (_, Right (newR, Just vs@(v1, v2))) ->
+                   if v1 > 0 then 
+                     let newL = addToRight v1 l
+                     in Right (Node (1 + (treeHeight newL `max` treeHeight newR)) newL newR, Just (0, v2))
+                   else Right (Node (1 + (treeHeight l `max` treeHeight newR)) l newR, Just vs)
 
 split :: Tree -> (Tree, Bool)
 split l@(Leaf v) = if v >= 10 
